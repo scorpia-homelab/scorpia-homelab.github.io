@@ -1,0 +1,14 @@
+The user wants a JSON object with exactly three keys: "name" (string), "age" (number), "hobbies" (array of 3 strings). No markdown fences, no comments, no extra keys. Output only valid JSON.
+
+Let me construct a simple valid JSON object:
+
+{
+  "name": "Alice Johnson",
+  "age": 30,
+  "hobbies": ["reading", "hiking", "cooking"]
+}
+
+That's it. No markdown fences, no comments, no extra keys. Exactly three keys. Let me make sure it's valid JSON - yes it is.
+
+
+{"name":"Alice Johnson","age":30,"hobbies":["reading","hiking","cooking"]}

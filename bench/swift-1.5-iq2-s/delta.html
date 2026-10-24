@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DELTA — a C64 tribute</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;overflow:hidden;color:#7d8aa5;
+    font-family:"Courier New",ui-monospace,monospace;
+    background:radial-gradient(1200px 700px at 50% 36%,#1b2130 0%,#0c0e14 55%,#06070a 100%);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  }
+  .bezel{
+    padding:12px 16px;border-radius:12px;border:1px solid #303543;
+    background:linear-gradient(180deg,#262a33,#14161c);
+    box-shadow:0 34px 70px rgba(0,0,0,.65),inset 0 1px 0 rgba(255,255,255,.09),inset 0 -3px 8px rgba(0,0,0,.5);
+  }
+  .plate{margin:0 0 10px;text-align:center;font-size:11px;letter-spacing:.4em;text-transform:uppercase;color:#6d7a92}
+  .screen{position:relative;line-height:0;border-radius:6px;overflow:hidden;
+    box-shadow:inset 0 0 46px rgba(0,0,0,.5),0 0 90px rgba(70,130,255,.14);
+    animation:crtOn .9s cubic-bezier(.2,.8,.3,1) both}
+  @keyframes crtOn{
+    0%{transform:scaleY(.015) scaleX(1.15);filter:brightness(4)}
+    55%{transform:scaleY(1.03) scaleX(1)}
+    100%{transform:none;filter:none}
+  }
+  canvas{display:block;background:#000;image-rendering:pixelated;-webkit-image-rendering:pixelated}
+  .scan{position:absolute;inset:0;pointer-events:none;mix-blend-mode:multiply;
+    background:repeating-linear-gradient(to bottom,rgba(0,0,0,0) 0px,rgba(0,0,0,.24) 1px,rgba(0,0,0,0) 3px);
+    animation:flick 5s infinite}
+  @keyframes flick{0%,92%,100%{opacity:1}94%{opacity:.86}}
+  .vig{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(ellipse at center,rgba(0,0,0,0) 58%,rgba(0,0,0,.34) 100%)}
+  .hint{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:#5b6780}
+</style>
+</head>
+<body>
+  <div class="bezel">
+    <p class="plate">Delta &middot; Thalamus 1987 &middot; Browser Tribute</p>
+    <div class="screen" id="screen">
+      <canvas id="game" width="320" height="200"></canvas>
+      <div class="scan"></div><div class="vig"></div>
+    </div>
+  </div>
+  <p class="hint">Arrows move &middot; Space fire &middot; P pause &middot; M sound</p>
+
+<script>
+(()=>{ 'use strict';
+/* ============================== SETUP ============================== */
+const W=320,H=200, cv=document.getElementById('game'), cx=cv.getContext('2d');
+cx.imageSmoothingEnabled=false;
+
+// VIC-II inspired palette (index = char in sprites)
+const PAL=['#000000','#FFFFFF','#E9514B','#00AEFF','#FFD524','#00C800',
+           '#0070D3','#FF6A2F','#9E571B','#FF8A80','#4AE04A','#7CA0FF',
+           '#D580D0','#7C7C7C','#969696'];
+
+/* 3x5 bitmap font */
+const FONT={
+'A':["011","101","111","101","101"],'B':["110","101","110","101","110"],
+'C':["011","101","101","101","011"],'D':["110","101","101","101","110"],
+'E':["111","100","110","100","111"],'F':["111","100","110","100","100"],
+'G':["011","101","111","101","111"],'H':["101","101","111","101","101"],
+'I':["111","010","010","010","111"],'J':["001","001","001","101","010"],
+'K':["101","101","110","101","101"],'L':["100","100","100","100","111"],
+'M':["101","111","111","101","101"],'N':["110","101","101","101","101"],
+'O':["011","101","101","101","011"],'P':["110","101","110","100","100"],
+'Q':["011","101","110","101","111"],'R':["110","101","110","101","101"],
+'S':["011","101","011","101","011"],'T':["111","010","010","010","010"],
+'U':["101","101","101","101","111"],'V':["101","101","101","010","010"],
+'W':["101","101","111","111","101"],'X':["101","010","101","010","101"],
+'Y':["101","101","010","010","010"],'Z':["111","010","100","010","111"],
+'0':["111","101","101","101","111"],'1':["010","110","010","010","111"],
+'2':["110","001","110","100","111"],'3':["110","001","010","001","110"],
+'4':["101","101","111","001","111"],'5':["111","100","110","001","110"],
+'6':["011","100","110","101","011"],'7':["111","001","010","010","010"],
+'8':["111","101","111","101","111"],'9':["011","101","111","001","110"],
+'-':["000","000","111","000","000"],'.':["000","000","000","000","010"],
+':':["000","010","000","010","000"],'!':["010","010","010","000","010"],
+'+':["000","010","111","010","000"],'$':["011","100","011","100","111"]};
+
+function drawText(x,y,str,col,scale=1){
+  str=str.toUpperCase(); let px=x;
+  for(const ch of str){
+    const g=FONT[ch]; if(!g){px+=4*scale;continue;}
+    for(let r=0;r<5;r++)for(let c=0;c<3;c++)
+      if(g[r][c]==='1'){cx.fillStyle=PAL[col];cx.fillRect(px+c*scale,y+r*scale,scale,scale);}
+    px+=4*scale;
+  }
+}
+const textW=(s,sc=1)=>s.length*4*sc-sc;
+
+/* sprites: char = palette index, '0' transparent */
+const SPR={
+player:["....1....","...111...",".7.1111..","77144411.",".7.1111..","...111...","....1...."],
+drone:[".2....2.","..2..2..",".21112..",".21112..","..2..2.."],
+raider:["....55....","...5..5...","..5.7.5..",".55788755.","..5.7.5...","...5..5...","....55...."],
+cruiser:[".....8888.....","..8888888888..",".88222222288.","889999999988",".88222222288.","..8888888888..",".....8888....."],
+boss:["......222222......",".....2333332......","....23444432......",
+      "...2345555432.....","..234566665432....",".23456777765432...",
+      "2345678888765432..",".23456777765432...","..234566665432....",
+      "...2345555432.....","....23444432......",".....2333332......"]};
+
+function drawSpr(x,y,sp,white=false){
+  for(let r=0;r<sp.length;r++){const row=sp[r];
+    for(let c=0;c<row.length;c++){const ch=row[c];
+      if(ch==='0')continue;
+      cx.fillStyle=white?PAL[1]:PAL[+ch];
+      cx.fillRect(x+c,y+r,1,1);}}
+}
+
+/* ============================== AUDIO ============================== */
+let AC=null,master=null,muted=false;
+function audio(){
+  if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)();
+    master=AC.createGain();master.gain.value=muted?0:.5;master.connect(AC.destination);}catch(e){}}
+  if(AC&&AC.state==='suspended')AC.resume();
+}
+function tone(f,when=0,dur=.1,type='square',vol=.14,slide=null){
+  if(!AC)return;const o=AC.createOscillator(),g=AC.createGain(),t0=AC.currentTime+when;
+  o.type=type;o.frequency.setValueAtTime(f,t0);
+  if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(20,slide),t0+dur);
+  g.gain.setValueAtTime(vol,t0);g.gain.exponentialRampToValueAtTime(.001,t0+dur);
+  o.connect(g).connect(master);o.start(t0);o.stop(t0+dur+.03);
+}
+function noise(when=0,dur=.2,vol=.2,freq=800,hp=false){
+  if(!AC)return;const n=Math.max(16,Math.floor(AC.sampleRate*dur)),
+    b=AC.createBuffer(1,n,AC.sampleRate),d=b.getChannelData(0);
+  for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*(1-i/n);
+  const s=AC.createBufferSource();s.buffer=b;
+  const f=AC.createBiquadFilter();f.type=hp?'highpass':'lowpass';f.frequency.value=freq;
+  const g=AC.createGain();g.gain.value=vol;s.connect(f).connect(g).connect(master);
+  s.start(AC.currentTime+when);
+}
+const SFX={
+  shoot:()=>tone(880,0,.06,'square',.09,420),
+  hit:()=>{noise(0,.12,.15,900);tone(220,0,.09,'square',.1)},
+  boom:(big)=>{noise(0,big?.5:.3,big?.3:.18,big?260:400);tone(big?110:160,0,big?.4:.2,'sawtooth',big?.2:.12,big?45:70)},
+  hurt:()=>{noise(0,.5,.32,240);tone(200,0,.5,'sawtooth',.22,40)},
+  power:()=>{[660,880,1320].forEach((f,i)=>tone(f,i*.07,.09,'square',.1))},
+  shield:()=>tone(300,0,.25,'triangle',.2,120),
+  over:()=>{[440,330,262,196].forEach((f,i)=>tone(f,i*.14,.16,'square',.14))},
+};
+
+/* chiptune loop */
+const BPM=112,STEP=60/BPM/2;
+const BASS=[110,0,110,0,98,0,98,0,130.81,0,130.81,0,146.83,0,155.56,0];
+const LEAD =[0,0,440,0,0,523.25,0,0,0,0,392,0,0,440,0,0];
+let mStep=0,mNext=0;
+function music(dt){
+  if(!AC||muted)return;
+  if(mNext===0)mNext=AC.currentTime+.1;
+  while(mNext<AC.currentTime+.15){
+    const s=mStep%16,w=Math.max(0,mNext-AC.currentTime);
+    if(BASS[s])tone(BASS[s],w,STEP*.85,'square',.055);
+    if(LEAD[s])tone(LEAD[s],w,.12,'square',.04);
+    if(s===4|| s===12)noise(w,.03,.02,6000,true);
+    mStep=(mStep+1)%16;mNext+=STEP;
+  }
+}
+
+/* ============================== STATE ============================== */
+let state='title',t=0,shakeT=0;
+let score=0,lives=3,weapon=1,shield=false,newHi=false,deathT=0;
+let wave=0,waveTimer=1.2,bannerT=0,bannerTxt='',spawnQueue=[],spawnT=0,boss=null;
+const player={x:34,y:H/2,alive:true,invuln:0,respawnT:0};
+let bullets=[],ebullets=[],enemies=[],powerups=[],parts=[],rings=[],popups=[];
+let fireCd=0,fireFlash=0;
+
+/* starfield + scenery */
+const stars=[[],[],[]];
+for(let l=0;l<3;l++)for(let i=0;i<[42,26,16][l];i++)
+  stars[l].push({x:Math.random()*W,y:Math.random()*H});
+let planets=[],asteroids=[],planetT=4,astT=8;
+
+function loadHi(){try{return +localStorage.getItem('delta_hi')||0}catch(e){return 0}}
+let hiScore=loadHi();
+function saveHi(){try{localStorage.setItem('delta_hi',hiScore)}catch(e){}}
+
+/* ============================== INPUT ============================== */
+const keys={};
+addEventListener('keydown',e=>{
+  const k=e.key.toLowerCase();
+  if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(k))e.preventDefault();
+  audio();
+  if(!keys[k]){
+    if(k==='enter'){if(state==='title'||state==='over')startGame();}
+    if(k==='p'&&state==='play'){state=state==='pause'?'play':'pause';mNext=0;}
+    if(k==='m'){muted=!muted;if(master)master.gain.value=muted?0:.5;}
+  }
+  keys[k]=true;
+});
+addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false});
+const kL=()=>keys['arrowleft']||keys['a'], kR=()=>keys['arrowright']||keys['d'];
+const kU=()=>keys['arrowup']||keys['w'],   kD=()=>keys['arrowdown']||keys['s'];
+const kF=()=>keys[' '];
+
+function startGame(){
+  score=0;lives=3;weapon=1;shield=false;newHi=false;deathT=0;shakeT=0;
+  wave=0;waveTimer=1.2;bannerT=0;spawnQueue=[];spawnT=0;boss=null;
+  bullets=[];ebullets=[];enemies=[];powerups=[];parts=[];rings=[];popups=[];
+  player.x=34;player.y=H/2;player.alive=true;player.invuln=1.5;
+  state='play';
+}
+
+/* ============================== HELPERS ============================== */
+function boom(x,y,big){
+  const n=big?26:12;
+  for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=(big?90:55)*(.4+Math.random());
+    parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,t:.35+Math.random()*.3,
+      col:[1,4,7,2][i%4],sz:big?2:1});}
+  rings.push({x,y,r:2,t:big?.6:.4});
+}
+function popup(x,y,str,col){popups.push({x:x-textW(str)/2,y,t:.8,str,col});}
+
+function makeEnemy(type){
+  const e={type,x:W+12,t:Math.random()*6,flash:0};
+  if(type==='drone'){e.y=e.baseY=40+Math.random()*(H-95);e.amp=8+Math.random()*18;
+    e.freq=2+Math.random()*3;e.vx=-(26+wave*1.5);e.hp=1;e.val=10;}
+  else if(type==='raider'){e.y=e.baseY=40+Math.random()*(H-95);e.amp=22+Math.random()*20;
+    e.freq=1.2+Math.random()*1.6;e.vx=-(42+wave*2);e.hp=2;e.val=50;e.fireT=.8+Math.random();}
+  else{e.y=e.baseY=50+Math.random()*(H-110);e.amp=10;e.freq=.8;
+    e.vx=-16;e.hp=6;e.val=200;e.fireT=1.4;}
+  return e;
+}
+function spawnBoss(){
+  boss={x:W+30,y:H/2,t:0,fireT:1.4,hp:30+wave*5,maxHp:30+wave*5};
+}
+function dropPowerup(x,y){
+  const r=Math.random();let ty;
+  if(r<.45)ty='W';else if(r<.65)ty='S';else if(r<.85)ty='$';else ty='+';
+  powerups.push({x,y,ty,t:0});
+}
+
+/* ============================== UPDATE ============================== */
+function update(dt){
+  t+=dt;
+  const scroll=state==='title'?14:34+wave*2;
+  stars.forEach((layer,l)=>{const sp=[10,26,58][l];
+    layer.forEach(s=>{s.x-=sp*dt;if(s.x<0)s.x+=W;});});
+
+  if(state==='pause')return;
+
+  /* scenery */
+  planetT-=dt;astT-=dt;
+  if(planetT<=0){planetT=12+Math.random()*14;spawnPlanet();}
+  if(astT<=0){astT=7+Math.random()*8;spawnAsteroid();}
+  planets.forEach(p=>{p.x-=9*dt;if(p.x<-p.r*2)planets.splice(planets.indexOf(p),1);});
+  asteroids.forEach(a=>{a.x-=60*dt;if(a.x<-20)asteroids

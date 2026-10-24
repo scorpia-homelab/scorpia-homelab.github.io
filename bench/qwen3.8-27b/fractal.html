@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fractals — Mandelbrot &amp; Julia</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: radial-gradient(1200px 700px at 50% -10%, #0a1020 0%, #05060c 60%, #030409 100%);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    color: #cdd7f0;
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100vh; padding: 22px 16px 40px;
+  }
+  h1 { font-size: 30px; letter-spacing: 6px; color: #dfe8ff; font-weight: 600;
+       text-shadow: 0 0 22px rgba(120,150,255,.4); margin-bottom: 4px; }
+  .sub { font-size: 12px; letter-spacing: 3px; color: #7f8bb5; margin-bottom: 20px; }
+  .grid { display: flex; gap: 26px; flex-wrap: wrap; justify-content: center; }
+  .panel { background: rgba(12,16,30,.6); border: 1px solid #232c48; border-radius: 12px;
+           padding: 14px; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+  .panel h2 { font-size: 14px; letter-spacing: 2px; color: #9fb0e0; margin-bottom: 10px;
+              text-align: center; text-transform: uppercase; }
+  canvas { display: block; border-radius: 6px; background: #000; }
+  .controls { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .row { display: flex; align-items: center; gap: 10px; font-size: 11px; letter-spacing: 1px; color: #8b98c4; }
+  .row label { width: 130px; }
+  .row input[type=range] { flex: 1; accent-color: #6d8bff; }
+  .row .val { width: 58px; text-align: right; font-variant-numeric: tabular-nums; color: #cdd7f0; }
+  .stats { margin-top: 10px; font-size: 10px; letter-spacing: 1px; color: #66719c;
+           text-align: center; font-variant-numeric: tabular-nums; }
+  .legend { margin-top: 8px; font-size: 11px; color: #6d78a0; text-align: center; letter-spacing: .5px; }
+</style>
+</head>
+<body>
+  <h1>FRACTALS</h1>
+  <div class="sub">MANDELBROT SET &nbsp;·&nbsp; JULIA SET &nbsp;·&nbsp; z → z² + c</div>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>Mandelbrot Set</h2>
+      <canvas id="man" width="560" height="460"></canvas>
+      <div class="legend">c ∈ ℂ &nbsp;·&nbsp; z₀ = 0 &nbsp;·&nbsp; escape when |z| &gt; 2</div>
+      <div class="stats" id="manStats"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Julia Set</h2>
+      <canvas id="jul" width="560" height="460"></canvas>
+      <div class="legend">z₀ ∈ ℂ &nbsp;·&nbsp; c fixed &nbsp;·&nbsp; escape when |z| &gt; 2</div>
+      <div class="controls">
+        <div class="row"><label>c · real</label>
+          <input type="range" id="cre" min="-1.5" max="1.5" step="0.001" value="-0.7269">
+          <span class="val" id="creV"></span></div>
+        <div class="row"><label>c · imag</label>
+          <input type="range" id="cim" min="-1.5" max="1.5" step="0.001" value="0.1889">
+          <span class="val" id="cimV"></span></div>
+      </div>
+      <div class="stats" id="julStats"></div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+  var MAX_ITER = 220;
+
+  // Inigo Quilez cosine palette:  a + b * cos(2pi * (c*t + d))
+  var A = [0.5, 0.5, 0.5];
+  var B = [0.5, 0.5, 0.5];
+  var C = [1.0, 1.0, 1.0];
+  var D = [0.00, 0.33, 0.67];
+  function palette(t) {
+    var r = A[0] + B[0] * Math.cos(6.28318 * (C[0]*t + D[0]));
+    var g = A[1] + B[1] * Math.cos(6.28318 * (C[1]*t + D[1]));
+    var b = A[2] + B[2] * Math.cos(6.28318 * (C[2]*t + D[2]));
+    return [Math.max(0,Math.min(255,r*255))|0,
+            Math.max(0,Math.min(255,g*255))|0,
+            Math.max(0,Math.min(255,b*255))|0];
+  }
+
+  // Escape-time fractal over a rect [re0,re1]x[im0,im1].
+  // mode 'mandelbrot': c = pixel, z0 = 0.   mode 'julia': z0 = pixel, c = fixed.
+  function render(canvas, re0, re1, im0, im1, cfix, mode) {
+    var ctx = canvas.getContext("2d");
+    var W = canvas.width, H = canvas.height;
+    var img = ctx.createImageData(W, H);
+    var buf = img.data;
+    var scale = (re1 - re0) / W;
+    var t0 = performance.now();
+    for (var py = 0; py < H; py++) {
+      var im = im0 + (py + 0.5) * (im1 - im0) / H;
+      for (var px = 0; px < W; px++) {
+        var re = re0 + (px + 0.5) * scale;
+        var cr = 0, ci = 0;
+        var zr = 0, zi = 0;
+        if (mode === "mandelbrot") { cr = re; ci = im; zr = 0; zi = 0; }
+        else { cr = cfix.re; ci = cfix.im; zr = re; zi = im; }
+
+        var it = 0;
+        // smooth iteration count
+        var zr2 = zr*zr, zi2 = zi*zi;
+        while (zr2 + zi2 <= 4.0 && it < MAX_ITER) {
+          zi = 2*zr*zi + ci;
+          zr = zr2 - zi2 + cr;
+          zr2 = zr*zr; zi2 = zi*zi;
+          it++;
+        }
+        var o;
+        if (it >= MAX_ITER) o = [0, 0, 6];
+        else {
+          var smooth = it + 1 - Math.log2(Math.log2(zr2 + zi2) / 2.0);
+          var t = (smooth / MAX_ITER) * 3.0;  // a few palette cycles for richness
+          o = palette(t);
+        }
+        var i = (py * W + px) * 4;
+        buf[i] = o[0]; buf[i+1] = o[1]; buf[i+2] = o[2]; buf[i+3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    return performance.now() - t0;
+  }
+
+  var man = document.getElementById("man");
+  var jul = document.getElementById("jul");
+  var cre = document.getElementById("cre");
+  var cim = document.getElementById("cim");
+  var creV = document.getElementById("creV");
+  var cimV = document.getElementById("cimV");
+
+  // Mandelbrot: canonical window, aspect-corrected to the canvas.
+  (function () {
+    var cy = -0.0, cx = -0.6;
+    var h = 2.6;                       // vertical span
+    var w = h * (man.width / man.height);
+    var ms = render(man, cx - w/2, cx + w/2, cy - h/2, cy + h/2, null, "mandelbrot");
+    document.getElementById("manStats").textContent =
+      "rendered " + man.width + "×" + man.height + " in " + ms.toFixed(0) + " ms";
+  })();
+
+  function drawJulia() {
+    var re = parseFloat(cre.value), im = parseFloat(cim.value);
+    creV.textContent = re.toFixed(3);
+    cimV.textContent = im.toFixed(3);
+    var h = 3.6, w = h * (jul.width / jul.height);
+    var ms = render(jul, -w/2, w/2, -h/2, h/2, { re: re, im: im }, "julia");
+    document.getElementById("julStats").textContent =
+      "c = " + re.toFixed(3) + " " + (im < 0 ? "−" : "+") + " " + Math.abs(im).toFixed(3) + "i  ·  " +
+      jul.width + "×" + jul.height + " in " + ms.toFixed(0) + " ms";
+  }
+  cre.addEventListener("input", drawJulia);
+  cim.addEventListener("input", drawJulia);
+  drawJulia();
+})();
+</script>
+</body>
+</html>

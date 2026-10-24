@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delta - Retro Space Shooter</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #111;
+            color: #fff;
+            font-family: 'Press Start 2P', cursive;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.2);
+            border: 4px solid #333;
+        }
+
+        canvas {
+            display: block;
+            background-color: #000;
+            image-rendering: pixelated; /* Crucial for retro look */
+        }
+
+        .ui-layer {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+            text-shadow: 2px 2px #000;
+        }
+
+        .hud-text {
+            color: #fff;
+            font-size: 16px;
+        }
+
+        #start-screen, #game-over-screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 10;
+        }
+
+        h1 { color: #0f0; margin-bottom: 20px; font-size: 40px; text-shadow: 4px 4px #003300; }
+        p { line-height: 1.5; color: #ccc; font-size: 12px; max-width: 600px;}
+        
+        button {
+            margin-top: 30px;
+            padding: 15px 30px;
+            background: #fff;
+            border: none;
+            font-family: 'Press Start 2P', cursive;
+            cursor: pointer;
+            color: #000;
+            box-shadow: 4px 4px 0px #555;
+        }
+        button:hover { background: #ccc; transform: translate(1px, 1px); box-shadow: 3px 3px 0px #555;}
+
+        .hidden { display: none !important; }
+        
+        /* CRT Scanline Effect */
+        .scanlines {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 6px 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div class="scanlines"></div>
+    
+    <div class="ui-layer hidden" id="hud">
+        <div class="hud-text">SCORE: <span id="scoreVal">0</span></div>
+        <div class="hud-text">HP: <span id="hpVal">100%</span></div>
+    </div>
+
+    <div id="start-screen">
+        <h1>DELTA</h1>
+        <p>ARROWS to Move<br>SPACE to Shoot</p>
+        <button onclick="startGame()">INSERT COIN (START)</button>
+    </div>
+
+    <div id="game-over-screen" class="hidden">
+        <h1 style="color: #f00; text-shadow: 4px 4px #500;">GAME OVER</h1>
+        <p>FINAL SCORE: <span id="finalScore">0</span></p>
+        <button onclick="resetGame()">RETRY</button>
+    </div>
+</div>
+
+<script>
+/** 
+ * AUDIO SYSTEM (Web Audio API)
+ * Synthesizes retro sounds without external files.
+ */
+const AudioSys = {
+    ctx: null,
+    init: function() {
+        window.AudioContext = window.AudioContext || window.webkitAudioContext;
+        this.ctx = new AudioContext();
+    },
+    playTone: function(freq, type, duration) {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+        gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + duration);
+    },
+    shoot: function() { this.playTone(880, 'square', 0.1); }, // High pitch beep
+    enemyShoot: function() { this.playTone(200, 'sawtooth', 0.15); }, // Low buzz
+    explosion: function() { 
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(100, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(10, this.ctx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.2);
+    }
+};
+
+/** 
+ * GAME ENGINE 
+ */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// Game State
+let gameRunning = false;
+let score = 0;
+let frameCount = 0;
+let cameraX = 0;
+
+// Inputs
+const keys = { ArrowLeft: false, ArrowRight: false, Space: false };
+
+window.addEventListener('keydown', e => {
+    if(e.code === 'ArrowLeft') keys.ArrowLeft = true;
+    if(e.code === 'ArrowRight') keys.ArrowRight = true;
+    if(e.code === 'Space') keys.Space = true;
+});
+window.addEventListener('keyup', e => {
+    if(e.code === 'ArrowLeft') keys.ArrowLeft = false;
+    if(e.code === 'ArrowRight') keys.ArrowRight = false;
+    if(e.code === 'Space') keys.Space = false;
+});
+
+// Entities
+const player = { x: 400, y: 500, w: 32, h: 32, speed: 5, hp: 100, maxHp: 100 };
+let bullets = [];
+let enemies = [];
+let particles = [];
+
+// --- CLASSES ---
+
+class Bullet {
+    constructor(x, y, dy, isEnemy) {
+        this.x = x;
+        this.y = y;
+        this.w = 4;
+        this.h = 10;
+        this.dy = dy; // Negative for up, positive for down
+        this.isEnemy = isEnemy;
+        this.markedForDeletion = false;
+    }
+
+    update() {
+        this.y += this.dy;
+        if (this.y < -50 || this.y > canvas.height + 50) this.markedForDeletion = true;
+    }
+
+    draw() {
+        ctx.fillStyle = this.isEnemy ? '#f00' : '#fff';
+        ctx.fillRect(this.x, this.y, this.w, this.h);
+    }
+}
+
+class Enemy {
+    constructor() {
+        this.w = 32;
+        this.h = 32;
+        this.x = Math.random() * (canvas.width - this.w) + cameraX; // Spawn relative to screen but offset by cam
+        this.y = -50;
+        this.speedY = Math.random() * 2 + 1.5; // Variable speed
+        this.markedForDeletion = false;
+        
+        // Randomize color based on type (simulated)
+        const colors = ['#f0f', '#0ff', '#fa0']; 
+        this.color = colors[Math.floor(Math.random() * colors.length)];
+    }
+
+    update() {
+        this.y += this.speedY;
+        if (this.y > canvas.height + 50) this.markedForDeletion = true;
+    }
+
+    draw() {
+        ctx.fillStyle = this.color;
+        // Draw a simple alien shape
+        ctx.fillRect(this.x, this.y, this.w, this.h);
+        // Eyes
+        ctx.fillStyle = '#000';
+        ctx.fillRect(this.x + 6, this.y + 8, 4, 4);
+        ctx.fillRect(this.x + 20, this.y + 8, 4, 4);
+    }
+}
+
+class Particle {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.vx = (Math.random() - 0.5) * 6;
+        this.vy = (Math.random() - 0.5) * 6;
+        this.life = 1.0;
+        this.decay = Math.random() * 0.03 + 0.02;
+    }
+
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life -= this.decay;
+    }
+
+    draw() {
+        ctx.globalAlpha = Math.max(0, this.life);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(this.x, this.y, 3, 3);
+        ctx.globalAlpha = 1.0;
+    }
+}
+
+// --- LOGIC ---
+
+function spawnEnemy() {
+    // Spawn rate increases slightly as score goes up
+    let spawnRate = 60; 
+    if (score > 500) spawnRate = 45;
+    if (score > 1000) spawnRate = 30;
+
+    if (frameCount % spawnRate === 0) {
+        enemies.push(new Enemy());
+    }
+}
+
+function checkCollisions() {
+    // Bullets hitting Enemies
+    bullets.forEach(bullet => {
+        if (bullet.isEnemy) return; // Skip enemy bullets here
+
+        enemies.forEach(enemy => {
+            if (!bullet.markedForDeletion && !enemy.markedForDeletion &&
+                bullet.x < enemy.x + enemy.w &&
+                bullet.x + bullet.w > enemy.x &&
+                bullet.y < enemy.y + enemy.h &&
+                bullet.y + bullet.h > enemy.y) {
+                
+                // Hit!
+                bullet.markedForDeletion = true;
+                enemy.markedForDeletion = true;
+                score += 100;
+                AudioSys.explosion();
+                createExplosion(enemy.x + enemy.w/2, enemy.y + enemy.h/2);
+            }
+        });
+    });
+
+    // Enemy Bullets hitting Player
+    bullets.forEach(bullet => {
+        if (!bullet.isEnemy) return;
+
+        if (bullet.x < player.x + player.w &&
+            bullet.x + bullet.w > player.x &&
+            bullet.y < player.y + player.h &&
+            bullet.y + bullet.h > player.y) {
+            
+            bullet.markedForDeletion = true;
+            takeDamage(20);
+        }
+    });
+
+    // Enemies hitting Player (Crash)
+    enemies.forEach(enemy => {
+        if (!enemy.markedForDeletion &&
+            player.x < enemy.x + enemy.w &&
+            player.x + player.w > enemy.x &&
+            player.y < enemy.y + enemy.h &&
+            player.y + player.h > enemy.y) {
+            
+            enemy.markedForDeletion = true;
+            takeDamage(30);
+            AudioSys.explosion();
+        }
+    });
+}
+
+function createExplosion(x, y) {
+    for(let i=0; i<10; i++) {
+        particles.push(new Particle(x, y));
+    }
+}
+
+function takeDamage(amount) {
+    player.hp -= amount;
+    AudioSys.explosion(); // Big boom sound
+    if (player.hp <= 0) {
+        gameOver();
+    } else {
+        updateUI();
+    }
+}
+
+function updatePlayer() {
+    if (keys.ArrowLeft && player.x > 0) player.x -= player.speed;
+    if (keys.ArrowRight && player.x < canvas.width - player.w) player.x += player.speed;
+
+    // Auto fire
+    if (keys.Space && frameCount % 15 === 0) {
+        bullets.push(new Bullet(player.x + player.w/2 - 2, player.y, -7, false));
+        AudioSys.shoot();
+    }
+}
+
+function updateCamera() {
+    // Keep player centered horizontally
+    let targetX = player.x - canvas.width / 2 + player.w / 2;
+    
+    // Clamp camera to world bounds (simulated infinite)
+    if (targetX < 0) targetX = 0;
+    if (targetX > 3000) targetX = 3000; // Arbitrary max map size
+
+    // Smooth lerp
+    cameraX += (targetX - cameraX) * 0.1;
+}
+
+function drawPlayer() {
+    ctx.fillStyle = '#fff';
+    // Simple ship shape
+    ctx.beginPath();
+    ctx.moveTo(player.x + player.w/2, player.y);
+    ctx.lineTo(player.x + player.w, player.y + player.h);
+    ctx.lineTo(player.x + player.w/2, player.y + player.h - 10);
+    ctx.lineTo(player.x, player.y + player.h);
+    ctx.fill();
+    
+    // Engine flame
+    if (Math.random() > 0.5) {
+        ctx.fillStyle = '#f00';
+        ctx.fillRect(player.x + player.w/2 - 4, player.y + player.h, 8, 10);
+    }
+}
+
+function drawBackground() {
+    // Draw stars based on camera position to create parallax effect
+    ctx.fillStyle = '#fff';
+    for (let i = 0; i < 50; i++) {
+        let sx = ((i * 137) - cameraX * 0.2) % canvas.width;
+        if (sx < 0) sx += canvas.width;
+        
+        // Draw star at screen coordinates
+        ctx.fillRect(sx, (i * 47) % canvas.height, 2, 2);
+    }
+
+    // Draw "Floor" or horizon line
+    ctx.fillStyle = '#1a1';
+    ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
+}
+
+function updateUI() {
+    document.getElementById('scoreVal').innerText = score;
+    document.getElementById('hpVal').innerText = Math.max(0, player.hp) + '%';
+    
+    // Color change for low HP
+    const hpEl = document.getElementById('hpVal');
+    if(player.hp < 30) hpEl.style.color = 'red';
+    else hpEl.style.color = '#fff';
+}
+
+function gameLoop() {
+    if (!gameRunning) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    updatePlayer();
+    spawnEnemy();
+    checkCollisions();
+    updateCamera();
+
+    // Update & Draw Bullets
+    bullets.forEach((b, index) => {
+        b.update();
+        b.draw();
+        if(b.markedForDeletion) bullets.splice(index, 1);
+    });
+
+    // Update & Draw Enemies
+    enemies.forEach((e, index) => {
+        e.update();
+        e.draw();
+        if(e.markedForDeletion) enemies.splice(index, 1);
+    });
+
+    // Update & Draw Particles
+    particles.forEach((p, index) => {
+        p.update();
+        p.draw();
+        if(p.life <= 0) particles.splice(index, 1);
+    });
+
+    drawBackground();
+    drawPlayer();
+
+    frameCount++;
+    requestAnimationFrame(gameLoop);
+}
+
+// --- GAME FLOW CONTROL ---
+
+function startGame() {
+    AudioSys.init(); // Initialize audio context on user interaction
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('game-over-screen').classList.add('hidden');
+    document.getElementById('hud').classList.remove('hidden');
+    
+    resetVariables();
+    gameRunning = true;
+    gameLoop();
+}
+
+function resetGame() {
+    startGame();
+}
+
+function resetVariables() {
+    player.x = canvas.width / 2 - 16;
+    player.hp = 100;
+    score = 0;
+    bullets = [];
+    enemies = [];
+    particles = [];
+    cameraX = 0;
+    frameCount = 0;
+    updateUI();
+}
+
+function gameOver() {
+    gameRunning = false;
+    document.getElementById('finalScore').innerText = score;
+    document.getElementById('game-over-screen').classList.remove('hidden');
+    document.getElementById('hud').classList.add('hidden');
+}
+
+// Initial Draw
+ctx.fillStyle = '#000';
+ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+</script>
+</body>
+</html>
+```

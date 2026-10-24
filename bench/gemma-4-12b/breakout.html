@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Breakout</title>
+    <style>
+        :root {
+            --bg-color: #0a0a12;
+            --primary-color: #00f2ff;
+            --secondary-color: #ff00ff;
+            --text-color: #ffffff;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 50px rgba(0, 242, 255, 0.2);
+            border: 2px solid var(--primary-color);
+            border-radius: 8px;
+            background: #000;
+        }
+
+        canvas {
+            display: block;
+            border-radius: 6px;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        }
+
+        .menu-card {
+            background: rgba(0, 0, 0, 0.85);
+            padding: 2rem;
+            border-radius: 15px;
+            border: 1px solid var(--secondary-color);
+            text-align: center;
+            pointer-events: auto;
+            backdrop-filter: blur(5px);
+        }
+
+        h1 {
+            margin: 0 0 1rem 0;
+            font-size: 3rem;
+            text-shadow: 0 0 10px var(--primary-color);
+            letter-spacing: 5px;
+        }
+
+        p {
+            margin-bottom: 2rem;
+            color: #ccc;
+        }
+
+        button {
+            padding: 12px 30px;
+            font-size: 1.2rem;
+            background: transparent;
+            color: var(--primary-color);
+            border: 2px solid var(--primary-color);
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        button:hover {
+            background: var(--primary-color);
+            color: #000;
+            box-shadow: 0 0 20px var(--primary-color);
+        }
+
+        #stats {
+            position: absolute;
+            top: 10px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.2rem;
+            pointer-events: none;
+            color: var(--primary-color);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="stats" class="hidden">
+            <div>SCORE: <span id="scoreVal">0</span></div>
+            <div>LIVES: <span id="livesVal">3</span></div>
+        </div>
+
+        <div id="ui-layer">
+            <!-- Start Screen -->
+            <div id="start-screen" class="menu-card">
+                <h1>NEON BREAKOUT</h1>
+                <p>Use Mouse or Touch to move paddle</p>
+                <button onclick="startGame()">Start Game</button>
+            </div>
+
+            <!-- Game Over Screen -->
+            <div id="game-over-screen" class="menu-card hidden">
+                <h1 id="over-title">GAME OVER</h1>
+                <p>Final Score: <span id="final-score">0</span></p>
+                <button onclick="startGame()">Try Again</button>
+            </div>
+
+            <!-- Win Screen -->
+            <div id="win-screen" class="menu-card hidden">
+                <h1 style="color: var(--secondary-color);">VICTORY</h1>
+                <p>You cleared the grid!</p>
+                <button onclick="startGame()">Play Again</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+    /** @type {HTMLCanvasElement} */
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('scoreVal');
+    const livesEl = document.getElementById('livesVal');
+    const finalScoreEl = document.getElementById('final-score');
+    
+    // Game Configuration
+    const config = {
+        width: 800,
+        height: 600,
+        paddleWidth: 120,
+        paddleHeight: 15,
+        ballRadius: 8,
+        brickRows: 7,
+        brickCols: 10,
+        brickPadding: 10,
+        brickOffsetTop: 60,
+        brickOffsetLeft: 35,
+        initialSpeed: 5,
+        speedIncrement: 0.2
+    };
+
+    // Game State
+    let score = 0;
+    let lives = 3;
+    let gameRunning = false;
+    let animationId;
+
+    // Objects
+    let paddle = { x: 0, y: 0, width: config.paddleWidth, height: config.paddleHeight };
+    let ball = { x: 0, y: 0, dx: 0, dy: 0, speed: config.initialSpeed };
+    let bricks = [];
+
+    // Initialize Canvas
+    function initCanvas() {
+        // Scale for smaller screens
+        const scale = Math.min(window.innerWidth / config.width, window.innerHeight / config.height);
+        canvas.width = config.width * scale;
+        canvas.height = config.height * scale;
+        ctx.scale(scale, scale);
+    }
+
+    // Initialize Bricks
+    function initBricks() {
+        bricks = [];
+        const colors = ['#ff00ff', '#00f2ff', '#00ff9d', '#ffcc00', '#ff4d00', '#ffffff'];
+        for (let r = 0; r < config.brickRows; r++) {
+            bricks[r] = [];
+            for (let c = 0; c < config.brickCols; c++) {
+                bricks[r][c] = {
+                    x: 0,
+                    y: 0,
+                    status: 1,
+                    color: colors[r % colors.length]
+                };
+            }
+        }
+    }
+
+    function resetBall() {
+        ball.x = config.width / 2;
+        ball.y = config.height - 50;
+        ball.speed = config.initialSpeed;
+        ball.dx = (Math.random() - 0.5) * 6;
+        ball.dy = -ball.speed;
+    }
+
+    function resetPaddle() {
+        paddle.x = (config.width - paddle.width) / 2;
+        paddle.y = config.height - 40;
+    }
+
+    function startGame() {
+        score = 0;
+        lives = 3;
+        gameRunning = true;
+        
+        scoreEl.innerText = score;
+        livesEl.innerText = lives;
+        
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('game-over-screen').classList.add('hidden');
+        document.getElementById('win-screen').classList.add('hidden');
+        document.getElementById('stats').classList.remove('hidden');
+
+        initBricks();
+        resetPaddle();
+        resetBall();
+
+        if (animationId) cancelAnimationFrame(animationId);
+        gameLoop();
+    }
+
+    // Input Handling
+    function handleInput(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        
+        let clientX;
+        if (e.touches) {
+            clientX = e.touches[0].clientX;
+        } else {
+            clientX = e.clientX;
+        }
+
+        const relativeX = (clientX - rect.left) * scaleX;
+        paddle.x = relativeX - paddle.width / 2;
+
+        // Keep paddle in bounds
+        if (paddle.x < 0) paddle.x = 0;
+        if (paddle.x + paddle.width > config.width) paddle.x = config.width - paddle.width;
+    }
+
+    window.addEventListener('mousemove', handleInput);
+    window.addEventListener('touchmove', (e) => {
+        handleInput(e);
+        e.preventDefault();
+    }, { passive: false });
+
+    function collisionDetection() {
+        for (let r = 0; r < config.brickRows; r++) {
+            for (let c = 0; c < config.brickCols; c++) {
+                let b = bricks[r][c];
+                if (b.status === 1) {
+                    if (
+                        ball.x > b.x &&
+                        ball.x < b.x + (config.width / config.brickCols - config.brickPadding) &&
+                        ball.y > b.y &&
+                        ball.y < b.y + 20
+                    ) {
+                        b.status = 0;
+                        ball.dy *= -1;
+                        score += 10;
+                        scoreEl.innerText = score;
+                        
+                        // Visual feedback: slight shake or flash could go here
+                        if (score % 100 === 0) ball.speed += 0.5;
+                    }
+                }
+            }
+        }
+    }
+
+    function update() {
+        if (!gameRunning) return;
+
+        // Move Ball
+        ball.x += ball.dx;
+        ball.y += ball.dy;
+
+        // Wall Collisions
+        if (ball.x + ball.radius > config.width || ball.x - ball.radius < 0) {
+            ball.dx *= -1;
+        }
+        if (ball.y - ball.radius < 0) {
+            ball.dy *= -1;
+        }
+
+        // Paddle Collision
+        if (ball.y + ball.radius > paddle.y && 
+            ball.y - ball.radius < paddle.y + paddle.height &&
+            ball.x > paddle.x && 
+            ball.x < paddle.x + paddle.width) {
+            
+            // Calculate hit position for dynamic bounce angle
+            let hitPoint = (ball.x - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
+            ball.dx = hitPoint * 6; // Max horizontal speed
+            ball.dy = -Math.abs(ball.dy); // Ensure it goes up
+            
+            // Add a bit of speed
+            ball.speed += 0.1;
+        }
+
+        // Bottom Boundary (Lose Life)
+        if (ball.y + ball.radius > config.height) {
+            lives--;
+            livesEl.innerText = lives;
+            if (lives <= 0) {
+                endGame(false);
+            } else {
+                resetBall();
+            }
+        }
+
+        collisionDetection();
+    }
+
+    function draw() {
+        // Clear Canvas
+        ctx.fillStyle = 'rgba(10, 10, 18, 0.3)'; // Motion blur effect
+        ctx.fillRect(0, 0, config.width, config.height);
+
+        // Draw Bricks
+        for (let r = 0; r < config.brickRows; r++) {
+            for (let c = 0; c < config.brickCols; c++) {
+                let b = bricks[r][c];
+                if (b.status === 1) {
+                    const brickW = (config.width / config.brickCols) - config.brickPadding;
+                    const brickH = 20;
+                    b.x = c * (brickW + config.brickPadding) + config.brickOffsetLeft;
+                    b.y = r * (brickH + config.brickPadding) + config.brickOffsetTop;
+
+                    ctx.fillStyle = b.color;
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = b.color;
+                    ctx.fillRect(b.x, b.y, brickW, brickH);
+                    ctx.shadowBlur = 0;
+                }
+            }
+        }
+
+        // Draw Paddle
+        ctx.fillStyle = '#00f2ff';
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#00f2ff';
+        ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+        ctx.shadowBlur = 0;
+
+        // Draw Ball
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#ff00ff';
+        ctx.fill();
+        ctx.closePath();
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#ff00ff';
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+
+    function gameLoop() {
+        update();
+        draw();
+        if (gameRunning) {
+            animationId = requestAnimationFrame(gameLoop);
+        }
+    }
+
+    function endGame(win) {
+        gameRunning = false;
+        cancelAnimationFrame(animationId);
+        
+        document.getElementById('stats').classList.add('hidden');
+        
+        if (win) {
+            document.getElementById('win-screen').classList.remove('hidden');
+        } else {
+            document.getElementById('over-title').innerText = "GAME OVER";
+            finalScoreEl.innerText = score;
+            document.getElementById('game-over-screen').classList.remove('hidden');
+        }
+    }
+
+    // Check for Win Condition
+    function checkWin() {
+        let remaining = 0;
+        for (let r = 0; r < config.brickRows; r++) {
+            for (let c = 0; c < config.brickCols; c++) {
+                if (bricks[r][c].status === 1) remaining++;
+            }
+        }
+        if (remaining === 0) endGame(true);
+    }
+
+    // Update loop to include win check
+    const originalUpdate = update;
+    update = function() {
+        originalUpdate();
+        checkWin();
+    };
+
+    // Initialize
+    initCanvas();
+    window.addEventListener('resize', initCanvas);
+</script>
+</body>
+</html>
+```

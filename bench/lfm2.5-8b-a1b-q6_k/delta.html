@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Retro Space Shooter</title>
+<style>
+  body {
+    margin: 0;
+    overflow: hidden;               /* hide scrollbars */
+    background: #000;
+    font-family: monospace;
+  }
+  canvas {
+    display: block;
+    background: #111;
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<script>
+/* -------------------------------------------------------------
+   Configuration & constants
+   ------------------------------------------------------------- */
+const canvasWidth  = 800;   // viewport width
+const canvasHeight = 600;   // viewport height
+const scrollSpeed   = 200;  // pixels per second
+
+const playerX = 100;
+const playerY = canvasHeight / 2;
+const playerSpeed = 0.5;   // cells per frame
+
+const enemySpawnRate = 1500; // ms between new enemies
+const maxEnemies      = 5;
+let enemyCount = 0;
+
+const bulletSpeed = 2;
+const bulletCount  = 10;
+
+/* -------------------------------------------------------------
+   Input handling
+   ------------------------------------------------------------- */
+const keys = {};
+window.addEventListener('keydown', e => keys[e.code] = true);
+window.addEventListener('keyup',   e => keys[e.code] = false);
+
+/* -------------------------------------------------------------
+   Game state
+   ------------------------------------------------------------- */
+let scrollX = 0;               // horizontal scroll offset
+let bullets = [];              // active bullets
+let enemies = [];             // active enemies
+
+/* -------------------------------------------------------------
+   Helper functions
+   ------------------------------------------------------------- */
+function drawBackground() {
+  // generate a simple star pattern (white dots)
+  const stars = [];
+  for (let x = -canvasWidth / 2; x < canvasWidth / 2; x += 20) {
+    stars.push({ x, y: 0 });
+  }
+  ctx.fillStyle = '#fff';
+  for (const s of stars) {
+    ctx.fillRect(s.x, s.y, 1, 1);
+  }
+}
+
+function drawPlayer() {
+  ctx.fillStyle = '#fff';
+  // draw a simple triangle (^ on top, v on bottom, base line)
+  ctx.fillStyle = '#fff';
+  ctx.fill('^');                     // top point
+  ctx.fill('v');                     // bottom point
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(playerX, playerY);
+  ctx.lineTo(playerX, playerY + 1);
+  ctx.stroke();
+}
+
+function drawEnemy(x, y) {
+  ctx.fillStyle = '#ff0000';
+  ctx.fillRect(x, y, 20, 20);
+}
+
+function drawBullet(x, y) {
+  ctx.beginPath();
+  ctx.arc(x, y, 2, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/* -------------------------------------------------------------
+   Main game loop
+   ------------------------------------------------------------- */
+function update() {
+  // ---- scrolling ----
+  scrollX += scrollSpeed * (delta / 1000);
+
+  // ---- spawn enemies ----
+  if (Math.random() < enemySpawnRate) {
+    const x = Math.random() * (canvasWidth - 20);
+    enemies.push({ x, y: canvasHeight / 2 });
+  }
+
+  // ---- player movement ----
+  playerX += playerSpeed * (delta / 1000);
+  playerX = Math.max(0, Math.min(canvasWidth - 20, playerX));
+
+  // ---- shooting ----
+  if (keys.up)    bullets.push({ x: playerX, y: playerY - bulletSpeed });
+  if (keys.down)  bullets.push({ x: playerX, y: playerY + bulletSpeed });
+  if (keys.left)  playerX -= 0.5;
+  if (keys.right) playerX += 0.5;
+
+  // ---- bullet‑enemy collisions ----
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    for (let j = 0; j < enemies.length; j++) {
+      const e = enemies[j];
+      if (Math.abs(b.x - e.x) < 2 && Math.abs(b.y - e.y) < 2) {
+        // hit – remove both
+        enemies.splice(j, 1);
+        bullets.splice(i, 1);
+        break;
+      }
+    }
+  }
+}
+
+function draw() {
+  // clear canvas and apply scroll offset
+  ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+  canvas.translate(-scrollX, 0);
+
+  // draw everything
+  drawBackground();
+  drawPlayer();
+  for (const e of enemies) drawEnemy(e.x, e.y);
+  for (const b of bullets)   drawBullet(b.x, b.y);
+}
+
+/* -------------------------------------------------------------
+   Initialization & loop
+   ------------------------------------------------------------- */
+function main() {
+  requestAnimationFrame(main);
+}
+
+/* Resize handling – keep scroll offset in sync */
+window.addEventListener('resize', () => {
+  canvasWidth  = window.innerWidth;
+  canvasHeight = window.innerHeight;
+  scrollX = 0;
+});
+
+/* Kick‑off */
+requestAnimationFrame(main);
+</script>
+</body>
+</html>
+```
+
+Save the code above as an `.html` file (e.g., `retro-shooter.html`) and open it in any modern browser. You’ll get a simple horizontal scrolling space‑shooter reminiscent of the classic C64 vibe, complete with a player ship, scrolling stars, and enemy ships you can shoot down. Enjoy!

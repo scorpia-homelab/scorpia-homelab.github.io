@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Drift - Retro Shooter</title>
+    <style>
+        /* Global styling to enforce the retro terminal look */
+        body {
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Courier New', monospace;
+            color: #00FF00; /* Classic green terminal text */
+            user-select: none;
+            overflow: hidden;
+        }
+
+        /* Canvas styling */
+        #gameCanvas {
+            border: 2px solid #00FF00;
+            box-shadow: 0 0 10px #00FF00; /* Glow effect */
+            background-color: #000011; /* Deep space blue/black */
+            image-rendering: pixelated; /* Ensures sharp pixels */
+        }
+
+        /* Game Over screen styling */
+        #game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            padding: 20px;
+            background-color: rgba(0, 0, 0, 0.8);
+            border: 2px solid #FF0000;
+            box-shadow: 0 0 15px #FF0000;
+            display: none; /* Hidden by default */
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+
+    <div id="game-over">
+        <h1>GAME OVER</h1>
+        <p>SCORE: <span id="finalScore">0</span></p>
+        <button onclick="startGame()" style="background: #00FF00; color: #000; border: none; padding: 10px 20px; cursor: pointer; font-family: 'Courier New', monospace;">RETRY</button>
+    </div>
+
+    <script>
+        // --- Game Constants and Setup ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const GAME_OVER_SCREEN = document.getElementById('game-over');
+        const FINAL_SCORE_DISPLAY = document.getElementById('finalScore');
+
+        // Game state variables
+        let gameLoopId;
+        let isRunning = false;
+        let score = 0;
+
+        // Player object
+        const player = {
+            x: canvas.width / 4,
+            y: canvas.height / 2,
+            width: 20,
+            height: 15,
+            speed: 6,
+            color: '#00FF00'
+        };
+
+        // Arrays to hold game entities
+        let bullets = [];
+        let enemies = [];
+        let keys = {};
+
+        // --- Game Object Classes/Constructors ---
+
+        class Bullet {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.width = 3;
+                this.height = 8;
+                this.speed = 10;
+                this.color = '#FFFF00'; // Yellow laser
+            }
+
+            update() {
+                this.y -= this.speed;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+            }
+        }
+
+        class Enemy {
+            constructor(x, y, width, height, speed) {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.height = height;
+                this.speed = speed;
+                this.color = '#FF0000'; // Red enemy
+            }
+
+            update() {
+                // Enemies scroll from right to left
+                this.x -= this.speed;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                // Draw a simple pixelated block enemy
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+                // Add a little detail to make it look more 'alien'
+                ctx.fillStyle = '#880000';
+                ctx.fillRect(this.x + 5, this.y + 5, this.width - 10, this.height - 10);
+            }
+        }
+
+        // --- Input Handling ---
+
+        window.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            if (e.key === ' ') {
+                e.preventDefault(); // Prevent scrolling when shooting
+                shootBullet();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        // --- Game Logic Functions ---
+
+        function shootBullet() {
+            // Limit bullets to prevent spamming
+            if (bullets.length < 5) {
+                bullets.push(new Bullet(player.x + player.width / 2 - 1.5, player.y));
+            }
+        }
+
+        function updatePlayer() {
+            if (keys['ArrowLeft'] || keys['a']) {
+                player.x = Math.max(0, player.x - player.speed);
+            }
+            if (keys['ArrowRight'] || keys['d']) {
+                player.x = Math.min(canvas.width - player.width, player.x + player.speed);
+            }
+        }
+
+        function spawnEnemy() {
+            // Randomly spawn enemies off the right side
+            const width = Math.floor(Math.random() * 20) + 20;
+            const height = Math.floor(Math.random() * 15) + 15;
+            const y = Math.floor(Math.random() * (canvas.height - 50)) + 25;
+            const x = canvas.width;
+            const speed = Math.random() * 2 + 2; // Speed between 2 and 4
+            enemies.push(new Enemy(x, y, width, height, speed));
+        }
+
+        function checkCollisions() {
+            // 1. Bullet vs Enemy
+            bullets = bullets.filter(bullet => {
+                let hit = false;
+                enemies = enemies.filter(enemy => {
+                    // Simple AABB collision check
+                    if (bullet.x < enemy.x + enemy.width &&
+                        bullet.x + bullet.width > enemy.x &&
+                        bullet.y < enemy.y + enemy.height &&
+                        bullet.y + bullet.height > enemy.y) {
+                        
+                        // Collision detected!
+                        hit = true;
+                        score += 10;
+                        return false; // Remove enemy
+                    }
+                    return true; // Keep enemy
+                });
+                return !hit; // Remove bullet if it hit something
+            });
+
+            // 2. Player vs Enemy
+            enemies = enemies.filter(enemy => {
+                // Check if enemy is near the player's horizontal position
+                if (enemy.x + enemy.width > player.x &&
+                    enemy.x < player.x + player.width &&
+                    enemy.y + enemy.height > player.y &&
+                    enemy.y < player.y + player.height) {
+                    
+                    // Collision detected! Game Over.
+                    gameOver();
+                    return false; // Remove enemy (for clean state)
+                }
+                return true; // Keep enemy
+            });
+        }
+
+        function updateGame() {
+            // 1. Update Player
+            updatePlayer();
+
+            // 2. Update Bullets
+            bullets.forEach(bullet => bullet.update());
+            // Remove bullets that leave the screen
+            bullets = bullets.filter(bullet => bullet.y > 0);
+
+            // 3. Update Enemies
+            enemies.forEach(enemy => enemy.update());
+            // Remove enemies that leave the screen
+            enemies = enemies.filter(enemy => enemy.x + enemy.width > 0);
+
+            // 4. Check Collisions
+            checkCollisions();
+
+            // 5. Spawn new enemies periodically
+            if (Math.random() < 0.03) { // 3% chance per frame
+                spawnEnemy();
+            }
+        }
+
+        function drawGame() {
+            // Clear the canvas (simulating the screen refresh)
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw the "stars" background (simple pixel effect)
+            ctx.fillStyle = '#000011';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw the player
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+
+            // Draw bullets
+            bullets.forEach(bullet => bullet.draw());
+
+            // Draw enemies
+            enemies.forEach(enemy => enemy.draw());
+
+            // Draw Score
+            ctx.fillStyle = '#00FF00';
+            ctx.font = "16px 'Courier New'";
+            ctx.fillText(`SCORE: ${score}`, 10, 20);
+        }
+
+        function gameLoop() {
+            if (!isRunning) return;
+
+            updateGame();
+            drawGame();
+
+            gameLoopId = requestAnimationFrame(gameLoop);
+        }
+
+        // --- Game State Management ---
+
+        function resetGame() {
+            score = 0;
+            bullets = [];
+            enemies = [];
+            player.x = canvas.width / 4;
+            // Ensure the game over screen is hidden
+            GAME_OVER_SCREEN.style.display = 'none';
+            FINAL_SCORE_DISPLAY.textContent = '0';
+        }
+
+        function startGame() {
+            if (gameLoopId) {
+                cancelAnimationFrame(gameLoopId);
+            }
+            resetGame();
+            isRunning = true;
+            gameLoop();
+        }
+
+        function gameOver() {
+            isRunning = false;
+            cancelAnimationFrame(gameLoopId);
+
+            // Display Game Over screen
+            FINAL_SCORE_DISPLAY.textContent = score;
+            GAME_OVER_SCREEN.style.display = 'block';
+        }
+
+        // Initial setup message
+        window.onload = () => {
+            ctx.fillStyle = '#00FF00';
+            ctx.font = "20px 'Courier New'";
+            ctx.textAlign = 'center';
+            ctx.fillText("COSMIC DRIFT", canvas.width / 2, 50);
+            ctx.font = "14px 'Courier New'";
+            ctx.fillText("Use ARROWS or A/D to move. SPACE to shoot.", canvas.width / 2, 80);
+            ctx.fillText("Press SPACE or click to start.", canvas.width / 2, 110);
+            
+            // Start the game automatically on the first click/key press
+            document.body.addEventListener('click', () => {
+                if (!isRunning) {
+                    startGame();
+                }, { once: true });
+        };
+
+    </script>
+</body>
+</html>

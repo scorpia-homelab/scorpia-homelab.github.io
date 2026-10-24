@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delta - Retro Space Shooter</title>
+    <style>
+        body {
+            background-color: #050505;
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        canvas {
+            border: 2px solid #33ff00; /* Retro C64 Green Border */
+            box-shadow: 0 0 20px rgba(51, 255, 0, 0.2);
+            background-color: #000;
+        }
+
+        /* CRT Scanline Effect Overlay */
+        .scanlines {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(
+                to bottom,
+                rgba(255,255,255,0),
+                rgba(255,255,255,0) 50%,
+                rgba(0,0,0,0.2) 50%,
+                rgba(0,0,0,0.2)
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 20px;
+            color: #33ff00; /* C64 Green */
+            text-shadow: 0 0 5px #33ff00;
+            z-index: 5;
+        }
+
+        #start-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(0,0,0,0.8);
+            padding: 2rem;
+            border: 1px solid #33ff00;
+        }
+
+        button {
+            background: transparent;
+            color: #33ff00;
+            border: 1px solid #33ff00;
+            padding: 10px 20px;
+            font-family: inherit;
+            cursor: pointer;
+            margin-top: 1rem;
+        }
+        button:hover { background: rgba(51, 255, 0, 0.2); }
+
+    </style>
+</head>
+<body>
+
+<div class="scanlines"></div>
+<div id="ui">SCORE: <span id="score">0</span></div>
+
+<div id="start-screen">
+    <h1 style="color:#33ff00; text-shadow: 2px 2px #ff00ff;">DELTA</h1>
+    <p>Arrows to Move • Space to Shoot</p>
+    <button onclick="startGame()">START MISSION</button>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+/** 
+ * DELTA - RETRO SPACE SHOOTER
+ * Inspired by the Commodore 64 original.
+ */
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const startScreen = document.getElementById('start-screen');
+
+// Game Constants
+const GAME_WIDTH = 800;
+const GAME_HEIGHT = 600;
+canvas.width = GAME_WIDTH;
+canvas.height = GAME_HEIGHT;
+
+const COLORS = {
+    player: '#33ff00', // C64 Green
+    enemy1: '#ff0055', // Pinkish Red
+    enemy2: '#ffff00', // Yellow
+    bullet: '#ffffff', // White
+    star: '#aaaaaa'
+};
+
+// Game State
+let gameRunning = false;
+let score = 0;
+let frameCount = 0;
+let scrollOffset = 0;
+
+// Input Handling
+const keys = {
+    ArrowLeft: false,
+    ArrowRight: false,
+    Space: false
+};
+
+window.addEventListener('keydown', (e) => {
+    if(e.code === 'Space') keys.Space = true;
+    if(e.key === 'ArrowLeft') keys.ArrowLeft = true;
+    if(e.key === 'ArrowRight') keys.ArrowRight = true;
+});
+
+window.addEventListener('keyup', (e) => {
+    if(e.code === 'Space') keys.Space = false;
+    if(e.key === 'ArrowLeft') keys.ArrowLeft = false;
+    if(e.key === 'ArrowRight') keys.ArrowRight = false;
+});
+
+// --- CLASSES ---
+
+class Star {
+    constructor() {
+        this.x = Math.random() * GAME_WIDTH;
+        this.y = Math.random() * GAME_HEIGHT;
+        this.size = Math.random() * 2 + 0.5;
+        this.speed = Math.random() * 3 + 1;
+    }
+
+    update() {
+        this.x -= this.speed; // Move left for parallax feel
+        if (this.x < 0) {
+            this.x = GAME_WIDTH;
+            this.y = Math.random() * GAME_HEIGHT;
+        }
+    }
+
+    draw() {
+        ctx.fillStyle = COLORS.star;
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+    }
+}
+
+class Player {
+    constructor() {
+        this.width = 40;
+        this.height = 30;
+        this.x = GAME_WIDTH / 2 - this.width / 2;
+        this.y = GAME_HEIGHT - 80;
+        this.speed = 5;
+        this.cooldown = 0;
+    }
+
+    update() {
+        // Movement
+        if (keys.ArrowLeft && this.x > 0) this.x -= this.speed;
+        if (keys.ArrowRight && this.x < GAME_WIDTH - this.width) this.x += this.speed;
+
+        // Shooting
+        if (this.cooldown > 0) this.cooldown--;
+        if (keys.Space && this.cooldown <= 0) {
+            bullets.push(new Bullet(this.x + this.width / 2, this.y));
+            this.cooldown = 15; // Fire rate
+        }
+    }
+
+    draw() {
+        ctx.fillStyle = COLORS.player;
+        // Draw a simple pixel-art style ship (Triangle pointing up)
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width / 2, this.y);
+        ctx.lineTo(this.x + this.width, this.y + this.height);
+        ctx.lineTo(this.x + this.width / 2, this.y + this.height - 10); // Engine notch
+        ctx.lineTo(this.x, this.y + this.height);
+        ctx.closePath();
+        ctx.fill();
+
+        // Engine flame effect
+        if (Math.random() > 0.5) {
+            ctx.fillStyle = '#ffff00';
+            ctx.beginPath();
+            ctx.moveTo(this.x + this.width / 2 - 5, this.y + this.height - 5);
+            ctx.lineTo(this.x + this.width / 2 + 5, this.y + this.height - 5);
+            ctx.lineTo(this.x + this.width / 2, this.y + this.height + (Math.random() * 10 + 5));
+            ctx.fill();
+        }
+    }
+}
+
+class Bullet {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 4;
+        this.height = 12;
+        this.speed = 10;
+        this.markedForDeletion = false;
+    }
+
+    update() {
+        this.y -= this.speed;
+        if (this.y < 0) this.markedForDeletion = true;
+    }
+
+    draw() {
+        ctx.fillStyle = COLORS.bullet;
+        ctx.fillRect(this.x - this.width/2, this.y, this.width, this.height);
+    }
+}
+
+class Enemy {
+    constructor(type) {
+        this.type = type; // 0: Basic, 1: Fast
+        this.width = 40;
+        this.height = 30;
+        this.x = Math.random() * (GAME_WIDTH - this.width);
+        this.y = -50;
+        this.speedY = type === 0 ? 2 : 4;
+        this.markedForDeletion = false;
+        
+        // Delta mechanic: Enemies can be shot from below if they cross the line? 
+        // For simplicity in this single file, we just shoot up. 
+    }
+
+    update() {
+        this.y += this.speedY + (scrollOffset * 0.1); // Move with world scroll
+        
+        // Wrap around logic or remove at bottom? Let's wrap for endless feel
+        if (this.y > GAME_HEIGHT) {
+            this.x = Math.random() * (GAME_WIDTH - this.width);
+            this.y = -50;
+        }
+
+        if (scrollOffset >= 1000) this.markedForDeletion = true; // Remove after scrolling past screen
+    }
+
+    draw() {
+        ctx.fillStyle = this.type === 0 ? COLORS.enemy1 : COLORS.enemy2;
+        
+        // Draw Enemy Shape (Inverted Triangle / Diamond)
+        ctx.beginPath();
+        if(this.type === 0) {
+            // Square-ish with spikes
+            ctx.fillRect(this.x, this.y + 5, this.width, this.height - 5);
+            ctx.fillStyle = '#fff'; // Eyes
+            ctx.fillRect(this.x + 8, this.y + 12, 4, 4);
+            ctx.fillRect(this.x + 28, this.y + 12, 4, 4);
+        } else {
+             // Fast ship shape
+            ctx.moveTo(this.x, this.y);
+            ctx.lineTo(this.x + this.width, this.y);
+            ctx.lineTo(this.x + this.width / 2, this.y + this.height);
+            ctx.fill();
+        }
+    }
+}
+
+class Particle {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.size = Math.random() * 3 + 1;
+        this.speedX = (Math.random() - 0.5) * 4;
+        this.speedY = (Math.random() - 0.5) * 4;
+        this.life = 20;
+    }
+
+    update() {
+        this.x += this.speedX;
+        this.y += this.speedY;
+        this.life--;
+    }
+
+    draw() {
+        ctx.fillStyle = `rgba(255, 255, 255, ${this.life / 20})`;
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+    }
+}
+
+// --- GAME LOGIC ---
+
+let player;
+let bullets = [];
+let enemies = [];
+let particles = [];
+let stars = [];
+
+function init() {
+    player = new Player();
+    bullets = [];
+    enemies = [];
+    particles = [];
+    score = 0;
+    scrollOffset = 0;
+    scoreEl.innerText = score;
+    
+    // Init Stars
+    stars = [];
+    for(let i=0; i<50; i++) {
+        stars.push(new Star());
+    }
+}
+
+function spawnEnemy() {
+    if (frameCount % 60 === 0) { // Spawn rate
+        enemies.push(new Enemy(Math.random() > 0.8 ? 1 : 0));
+    }
+}
+
+function checkCollisions() {
+    // Bullets hitting Enemies
+    bullets.forEach(bullet => {
+        enemies.forEach(enemy => {
+            if (!bullet.markedForDeletion && !enemy.markedForDeletion) {
+                if (
+                    bullet.x < enemy.x + enemy.width &&
+                    bullet.x + bullet.width > enemy.x &&
+                    bullet.y < enemy.y + enemy.height &&
+                    bullet.y + bullet.height > enemy.y
+                ) {
+                    // Hit!
+                    enemy.markedForDeletion = true;
+                    bullet.markedForDeletion = true;
+                    score += 100;
+                    scoreEl.innerText = score;
+                    
+                    // Explosion
+                    for(let i=0; i<8; i++) particles.push(new Particle(enemy.x + enemy.width/2, enemy.y + enemy.height/2));
+                }
+            }
+        });
+    });
+
+    // Enemies hitting Player (Game Over logic handled in loop)
+    enemies.forEach(enemy => {
+        if (!enemy.markedForDeletion && !player.markedForDeletion) {
+             // Simple box collision with padding for fairness
+             const padding = 10;
+            if (
+                player.x + padding < enemy.x + enemy.width &&
+                player.x + player.width - padding > enemy.x &&
+                player.y + padding < enemy.y + enemy.height &&
+                player.y + player.height - padding > enemy.y
+            ) {
+                gameOver();
+            }
+        }
+    });
+}
+
+function drawBackground() {
+    // Clear screen with slight fade for trail effect (optional, but clean clear is better for retro)
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+    stars.forEach(star => {
+        star.update();
+        star.draw();
+    });
+}
+
+function gameLoop() {
+    if (!gameRunning) return;
+
+    // Logic
+    player.update();
+    
+    // Scroll effect logic: Move everything down based on scrollOffset, then reset offset
+    // This creates the illusion of moving forward
+    let moveAmount = 2; 
+    bullets.forEach(b => b.y += moveAmount);
+    enemies.forEach(e => e.y += moveAmount);
+
+    if (scrollOffset >= 100) {
+        scrollOffset = 0;
+        // Reset positions to top relative to screen but keep world moving? 
+        // Actually, simpler approach for this demo: Just let them fall off and respawn or remove.
+        // Let's just remove bullets that go off screen to save memory.
+    }
+
+    bullets.forEach(b => b.update());
+    enemies.forEach(e => e.update());
+    particles.forEach(p => p.update());
+
+    spawnEnemy();
+    checkCollisions();
+
+    // Cleanup
+    bullets = bullets.filter(b => !b.markedForDeletion);
+    enemies = enemies.filter(e => !e.markedForDeletion);
+    particles = particles.filter(p => p.life > 0);
+
+    // Draw
+    drawBackground();
+    
+    player.draw();
+    bullets.forEach(b => b.draw());
+    enemies.forEach(e => e.draw());
+    particles.forEach(p => p.draw());
+
+    frameCount++;
+    requestAnimationFrame(gameLoop);
+}
+
+function startGame() {
+    init();
+    gameRunning = true;
+    startScreen.style.display = 'none';
+    gameLoop();
+}
+
+function gameOver() {
+    gameRunning = false;
+    alert("GAME OVER\nFinal Score: " + score);
+    startScreen.style.display = 'block';
+}
+
+// Initial Draw for background before start
+drawBackground();
+
+</script>
+</body>
+</html>

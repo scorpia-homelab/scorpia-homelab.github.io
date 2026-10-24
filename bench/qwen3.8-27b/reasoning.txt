@@ -1,0 +1,3 @@
+“All but 9 die” means 9 sheep do not die, so they are the ones left.
+
+**Final number: 9**

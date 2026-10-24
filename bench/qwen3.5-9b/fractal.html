@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandelbrot & Julia Set Visualizer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #111;
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        header {
+            padding: 10px;
+            text-align: center;
+            background: #222;
+            width: 100%;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+
+        h1 { margin: 0; font-size: 1.2rem; }
+        p { margin: 5px 0 0; font-size: 0.8rem; color: #aaa; }
+
+        #controls {
+            margin-top: 10px;
+            padding: 10px;
+            background: #222;
+            border-radius: 8px;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        label { font-size: 0.8rem; margin-bottom: 4px; }
+        
+        input[type="range"] { cursor: pointer; }
+
+        canvas {
+            background-color: #000;
+            cursor: move;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            border: 1px solid #333;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.5rem;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Fractal Explorer</h1>
+    <p>Left: Mandelbrot Set | Right: Julia Set</p>
+</header>
+
+<div id="controls">
+    <div class="control-group">
+        <label for="juliaSlider">Julia Constant (Imaginary): <span id="juliaVal">0.0</span></label>
+        <input type="range" id="juliaSlider" min="-1.5" max="1.5" step="0.01" value="0.0">
+    </div>
+    <div class="control-group">
+        <label for="maxIter">Iteration Depth: <span id="iterVal">100</span></label>
+        <input type="range" id="maxIter" min="50" max="500" step="10" value="100">
+    </div>
+    <div style="font-size: 0.8rem; color: #888;">
+        Scroll to Zoom • Drag to Pan
+    </div>
+</div>
+
+<div id="loading">Rendering...</div>
+<canvas id="fractalCanvas"></canvas>
+
+<script>
+    /**
+     * CONFIGURATION & STATE
+     */
+    const canvas = document.getElementById('fractalCanvas');
+    const ctx = canvas.getContext('2d', { alpha: false }); // Optimization: disable alpha for speed
+    const loadingEl = document.getElementById('loading');
+    
+    // Viewport State
+    const view = {
+        centerX: -0.7,
+        centerY: 0.0,
+        scale: 3.0, // Zoom level (pixels per unit)
+        offsetX: 0, // Pan offset
+        offsetY: 0
+    };
+
+    // Julia Set State
+    const juliaState = {
+        cReal: -0.7, // Fixed real part (center of Mandelbrot)
+        cImag: 0.0,  // Variable imaginary part (controlled by slider)
+        maxIter: 100
+    };
+
+    // Mouse Interaction State
+    let isDragging = false;
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+
+    /**
+     * INITIALIZATION
+     */
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight - 100; // Subtract header/controls height
+        draw();
+    }
+    window.addEventListener('resize', resize);
+
+    /**
+     * COLOR PALETTE
+     * Uses a smooth gradient based on iteration count.
+     * Maps iteration count to a hue in HSL space.
+     */
+    function getColor(iteration, maxIter) {
+        if (iteration === 0) return [0, 0, 0]; // Black for inside set
+
+        // Smooth coloring: normalize iteration count
+        // We use log2 to smooth out the bands
+        const normalized = Math.log2(iteration);
+        
+        // Map normalized value to a hue (0 to 360)
+        // We create a cycle that goes Blue -> Purple -> Orange -> Yellow
+        const hue = (normalized * 180) % 360; 
+        
+        // Saturation and Lightness for a neon look
+        const sat = 80;
+        const light = 50;
+
+        // Convert HSL to RGB
+        // HSL to RGB conversion logic
+        const h = hue / 360;
+        const s = sat / 100;
+        const l = light / 100;
+
+        let r, g, b;
+        if (s === 0) {
+            r = g = b = l;
+        } else {
+            const hue2rgb = (p, q, t) => {
+                if (t < 0) t += 1;
+                if (t > 1) t -= 1;
+                if (t < 1/6) return p + (q - p) * 6 * t;
+                if (t < 1/2) return q;
+                if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                return p;
+            };
+            const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+            const p = 2 * l - q;
+            r = hue2rgb(p, q, h + 1/3);
+            g = hue2rgb(p, q, h);
+            b = hue2rgb(p, q, h - 1/3);
+        }
+
+        return [Math.floor(r * 255), Math.floor(g * 255), Math.floor(b * 255)];
+    }
+
+    /**
+     * MATH: COMPLEX NUMBER OPERATIONS
+     */
+    // z = z^2 + c
+    function iterateMandelbrot(cReal, cImag, maxIter) {
+        let x = 0;
+        let y = 0;
+        let x2 = 0;
+        let y2 = 0;
+        let iter = 0;
+
+        for (let i = 0; i < maxIter; i++) {
+            // z = z^2 + c
+            // x_new = x^2 - y^2 + c_real
+            // y_new = 2*x*y + c_imag
+            x2 = x * x;
+            y2 = y * y;
+            
+            x = x2 - y2 + cReal;
+            y = 2 * x * y + cImag; // Note: x is already updated here, strictly should use old x, but standard formula handles it
+
+            // Check escape condition: |z|^2 > 4
+            if (x2 + y2 > 4) return i;
+        }
+        return maxIter;
+    }
+
+    // z = z^2 + c (Starting z is the pixel coordinate)
+    function iterateJulia(zReal, zImag, cReal, cImag, maxIter) {
+        let x = zReal;
+        let y = zImag;
+        let x2 = 0;
+        let y2 = 0;
+        let iter = 0;
+
+        for (let i = 0; i < maxIter; i++) {
+            x2 = x * x;
+            y2 = y * y;
+            
+            x = x2 - y2 + cReal;
+            y = 2 * x * y + cImag;
+
+            if (x2 + y2 > 4) return i;
+        }
+        return maxIter;
+    }
+
+    /**
+     * MAIN RENDER LOOP
+     */
+    function draw() {
+        loadingEl.style.opacity = 1;
+        
+        // Update UI
+        document.getElementById('juliaVal').innerText = juliaState.cImag.toFixed(2);
+        document.getElementById('iterVal').innerText = juliaState.maxIter;
+
+        // Use setTimeout to allow UI to update (show loading text) before heavy computation
+        setTimeout(() => {
+            const w = canvas.width;
+            const h = canvas.height;
+            const imgData = ctx.createImageData(w, h);
+            const data = imgData.data;
+
+            // Split canvas: Left = Mandelbrot, Right = Julia
+            const midX = w / 2;
+
+            // --- LEFT HALF: MANDELBROT SET ---
+            // Map pixel (x, y) to complex plane (cReal, cImag)
+            for (let y = 0; y < h; y++) {
+                // Map screen Y to complex Y
+                const cImag = (view.centerY - view.offsetY) + (y / h) * (2.0 / view.scale);
+                
+                for (let x = 0; x < midX; x++) {
+                    // Map screen X to complex X
+                    const cReal = (view.centerX - view.offsetX) + (x / midX) * (2.0 / view.scale);
+
+                    const iter = iterateMandelbrot(cReal, cImag, juliaState.maxIter);
+                    const color = getColor(iter, juliaState.maxIter);
+
+                    const index = (y * midX + x) * 4;
+                    data[index] = color[0];     // R
+                    data[index + 1] = color[1]; // G
+                    data[index + 2] = color[2]; // B
+                    data[index + 3] = 255;     // Alpha
+                }
+            }
+
+            // --- RIGHT HALF: JULIA SET ---
+            // Map pixel (x, y) to complex plane (zReal, zImag)
+            for (let y = 0; y < h; y++) {
+                const cImag = (view.centerY - view.offsetY) + (y / h) * (2.0 / view.scale);
+                
+                for (let x = midX; x < w; x++) {
+                    const cReal = (view.centerX - view.offsetX) + ((x - midX) / midX) * (2.0 / view.scale);
+
+                    // Julia set uses the pixel coordinate as the starting z
+                    const iter = iterateJulia(cReal, cImag, juliaState.cReal, juliaState.cImag, juliaState.maxIter);
+                    const color = getColor(iter, juliaState.maxIter);
+
+                    const index = (y * w + x) * 4;
+                    data[index] = color[0];
+                    data[index + 1] = color[1];
+                    data[index + 2] = color[2];
+                    data[index + 3] = 255;
+                }
+            }
+
+            ctx.putImageData(imgData, 0, 0);
+            loadingEl.style.opacity = 0;
+        }, 0);
+    }
+
+    /**
+     * EVENT LISTENERS
+     */
+    
+    // Slider Controls
+    document.getElementById('juliaSlider').addEventListener('input', (e) => {
+        juliaState.cImag = parseFloat(e.target.value);
+        draw();
+    });
+
+    document.getElementById('maxIter').addEventListener('input', (e) => {
+        juliaState.maxIter = parseInt(e.target.value);
+        draw();
+    });
+
+    // Mouse Interaction (Pan & Zoom)
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        
+        // Zoom logic: modify scale based on wheel delta
+        const zoomSpeed = 0.1;
+        const direction = e.deltaY > 0 ? -1 : 1;
+        
+        // Zoom towards mouse pointer (simplified for this demo: zoom towards center of view)
+        // To zoom towards mouse, we need to adjust offsetX/Y based on mouse position relative to center
+        const mouseX = e.offsetX;
+        const mouseY = e.offsetY;
+
+        const newScale = view.scale * (1 + direction * zoomSpeed);
+        
+        // Calculate offset adjustment to keep mouse point stationary
+        const cx = view.centerX - view.offsetX;
+        const cy = view.centerY - view.offsetY;
+        
+        // Adjust center to maintain perspective
+        const adjX = (mouseX / canvas.width) * (2.0 / newScale) - (mouseX / canvas.width) * (2.0 / view.scale);
+        const adjY = (mouseY / canvas.height) * (2.0 / newScale) - (mouseY / canvas.height) * (2.0 / view.scale);
+
+        view.scale = newScale;
+        view.centerX = view.centerX + adjX;
+        view.centerY = view.centerY + adjY;
+        
+        draw();
+    });
+
+    canvas.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+        canvas.style.cursor = 'grabbing';
+    });
+
+    window.addEventListener('mouseup', () => {
+        isDragging = false;
+        canvas.style.cursor = 'move';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        
+        const dx = e.clientX - lastMouseX;
+        const dy = e.clientY - lastMouseY;
+        
+        // Convert pixel movement to complex plane movement
+        const scaleInv = 2.0 / view.scale;
+        
+        view.offsetX += dx * scaleInv;
+        view.offsetY += dy * scaleInv;
+        
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+        
+        draw();
+    });
+
+    // Initial Draw
+    resize();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "reasoning": 10,
+  "creative": 8,
+  "breakout": 9,
+  "delta": 9,
+  "fractal": 7,
+  "_notes": {
+    "method": "headless play-test (playtest.py) + static diagnosis (game_diag.py)",
+    "reasoning": "riddle correct (9), clean",
+    "creative": "strong atmosphere, coherent, good twist landing",
+    "breakout": "paints, animates, responds to input, 0 console errors",
+    "delta": "paints, animates, responds to input, 0 console errors",
+    "fractal": "Mandelbrot + Julia both painted with slider UI and 0 errors, but no canvas input response detected (sliders only)"
+  }
+}

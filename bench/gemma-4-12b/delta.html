@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEON DELTA - Retro Space Shooter</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050505;
+            color: #00FF41;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #game-container {
+            position: relative;
+            border: 4px solid #333;
+            box-shadow: 0 0 20px rgba(0, 255, 65, 0.2);
+        }
+
+        canvas {
+            display: block;
+            background: #000;
+            image-rendering: pixelated;
+        }
+
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            pointer-events: none;
+            text-shadow: 2px 2px #000;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10;
+        }
+
+        h1 { font-size: 48px; margin-bottom: 10px; color: #fff; }
+        p { font-size: 18px; margin: 5px; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="ui">
+            SCORE: <span id="score">0</span><br>
+            SPEED: <span id="speed">1.0</span>x
+        </div>
+        
+        <div id="overlay">
+            <h1>NEON DELTA</h1>
+            <p>USE ARROWS OR WASD TO MOVE</p>
+            <p>SPACE TO FIRE</p>
+            <button id="start-btn" style="padding: 10px 20px; cursor: pointer; background: #00FF41; border: none; font-weight: bold;">START MISSION</button>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+<script>
+    /** @type {HTMLCanvasElement} */
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const speedEl = document.getElementById('speed');
+    const overlay = document.getElementById('overlay');
+    const startBtn = document.getElementById('start-btn');
+
+    // Game Constants
+    const WIDTH = 800;
+    const HEIGHT = 500;
+    canvas.width = WIDTH;
+    canvas.height = HEIGHT;
+
+    let gameRunning = false;
+    let score = 0;
+    let gameSpeed = 3;
+    let frameCount = 0;
+
+    // Input State
+    const keys = {};
+    window.addEventListener('keydown', e => keys[e.code] = true);
+    window.addEventListener('keyup', e => keys[e.code] = false);
+
+    // Game Objects
+    let player = {
+        x: 100,
+        y: HEIGHT / 2,
+        w: 30,
+        h: 20,
+        speed: 5,
+        bullets: [],
+        color: '#00FF41'
+    };
+
+    let enemies = [];
+    let particles = [];
+    let stars = [];
+
+    // Initialize Stars (Parallax)
+    function initStars() {
+        stars = [];
+        for (let i = 0; i < 150; i++) {
+            stars.push({
+                x: Math.random() * WIDTH,
+                y: Math.random() * HEIGHT,
+                size: Math.random() * 2,
+                speed: Math.random() * 3 + 1
+            });
+        }
+    }
+
+    function createExplosion(x, y, color) {
+        for (let i = 0; i < 15; i++) {
+            particles.push({
+                x: x,
+                y: y,
+                vx: (Math.random() - 0.5) * 10,
+                vy: (Math.random() - 0.5) * 10,
+                life: 1.0,
+                color: color
+            });
+        }
+    }
+
+    function spawnEnemy() {
+        const types = [
+            { color: '#FF00FF', hp: 1, speed: 2 }, // Fast/Weak
+            { color: '#00FFFF', hp: 3, speed: 1 }, // Slow/Tank
+            { color: '#FFFF00', hp: 2, speed: 1.5 } // Medium
+        ];
+        const type = types[Math.floor(Math.random() * types.length)];
+        
+        enemies.push({
+            x: WIDTH + 50,
+            y: Math.random() * (HEIGHT - 50) + 25,
+            w: 30,
+            h: 30,
+            ...type,
+            maxHp: type.hp
+        });
+    }
+
+    function update() {
+        if (!gameRunning) return;
+
+        frameCount++;
+        gameSpeed += 0.0005; // Gradual acceleration
+        speedEl.innerText = (gameSpeed / 3).toFixed(1);
+
+        // Player Movement
+        if (keys['ArrowUp'] || keys['KeyW']) player.y -= player.speed;
+        if (keys['ArrowDown'] || keys['KeyS']) player.y += player.speed;
+        if (keys['ArrowLeft'] || keys['KeyA']) player.x -= player.speed;
+        if (keys['ArrowRight'] || keys['KeyD']) player.x += player.speed;
+
+        // Boundaries
+        if (player.y < 0) player.y = 0;
+        if (player.y > HEIGHT - player.h) player.y = HEIGHT - player.h;
+        if (player.x < 0) player.x = 0;
+        if (player.x > WIDTH - player.w) player.x = WIDTH - player.w;
+
+        // Shooting
+        if (keys['Space'] && frameCount % 10 === 0) {
+            player.bullets.push({
+                x: player.x + player.w,
+                y: player.y + player.h / 2,
+                vx: 10,
+                vy: 0
+            });
+        }
+
+        // Update Bullets
+        player.bullets.forEach((b, index) => {
+            b.x += b.vx;
+            if (b.x > WIDTH) player.bullets.splice(index, 1);
+        });
+
+        // Update Enemies
+        if (frameCount % Math.max(20, Math.floor(60 - gameSpeed)) === 0) {
+            spawnEnemy();
+        }
+
+        enemies.forEach((en, eIdx) => {
+            en.x -= (gameSpeed + en.speed);
+            
+            // Collision with Player
+            if (rectIntersect(player.x, player.y, player.w, player.h, en.x, en.y, en.w, en.h)) {
+                gameOver();
+            }
+
+            // Collision with Bullets
+            player.bullets.forEach((b, bIdx) => {
+                if (rectIntersect(b.x, b.y, 5, 5, en.x, en.y, en.w, en.h)) {
+                    en.hp--;
+                    player.bullets.splice(bIdx, 1);
+                    if (en.hp <= 0) {
+                        createExplosion(en.x, en.y, en.color);
+                        enemies.splice(eIdx, 1);
+                        score += 100;
+                        scoreEl.innerText = score;
+                    }
+                }
+            });
+
+            if (en.x < -50) enemies.splice(eIdx, 1);
+        });
+
+        // Update Particles
+        particles.forEach((p, index) => {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= 0.02;
+            if (p.life <= 0) particles.splice(index, 1);
+        });
+
+        // Update Stars
+        stars.forEach(s => {
+            s.x -= s.speed;
+            if (s.x < 0) s.x = WIDTH;
+        });
+    }
+
+    function rectIntersect(x1, y1, w1, h1, x2, y2, w2, h2) {
+        return x2 < x1 + w1 && x2 + w2 > x1 && y2 < y1 + h1 && y2 + h2 > y1;
+    }
+
+    function draw() {
+        // Clear Canvas
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+        // Draw Stars
+        ctx.fillStyle = '#fff';
+        stars.forEach(s => {
+            ctx.globalAlpha = s.speed / 4;
+            ctx.fillRect(s.x, s.y, s.size, s.size);
+        });
+        ctx.globalAlpha = 1.0;
+
+        // Draw Particles
+        particles.forEach(p => {
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = p.life;
+            ctx.fillRect(p.x, p.y, 3, 3);
+        });
+        ctx.globalAlpha = 1.0;
+
+        // Draw Player (Delta-style ship)
+        ctx.fillStyle = player.color;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = player.color;
+        
+        // Ship Body
+        ctx.beginPath();
+        ctx.moveTo(player.x, player.y);
+        ctx.lineTo(player.x + player.w, player.y + player.h / 2);
+        ctx.lineTo(player.x, player.y + player.h);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Ship Engine Glow
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(player.x - 5, player.y + 5, 5, 10);
+
+        // Draw Bullets
+        ctx.fillStyle = '#fff';
+        ctx.shadowColor = '#fff';
+        player.bullets.forEach(b => {
+            ctx.fillRect(b.x, b.y, 10, 2);
+        });
+
+        // Draw Enemies
+        enemies.forEach(en => {
+            ctx.fillStyle = en.color;
+            ctx.shadowColor = en.color;
+            ctx.fillRect(en.x, en.y, en.w, en.h);
+            // Enemy "Eye"
+            ctx.fillStyle = '#000';
+            ctx.fillRect(en.x + 5, en.y + 5, 5, 5);
+        });
+
+        ctx.shadowBlur = 0; // Reset shadow for performance
+    }
+
+    function gameLoop() {
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+    }
+
+    function gameOver() {
+        gameRunning = false;
+        overlay.classList.remove('hidden');
+        overlay.querySelector('h1').innerText = "MISSION FAILED";
+        overlay.querySelector('p').innerText = `FINAL SCORE: ${score}`;
+        startBtn.innerText = "RETRY";
+    }
+
+    function resetGame() {
+        score = 0;
+        gameSpeed = 3;
+        enemies = [];
+        player.bullets = [];
+        particles = [];
+        player.x = 100;
+        player.y = HEIGHT / 2;
+        scoreEl.innerText = score;
+        overlay.classList.add('hidden');
+        gameRunning = true;
+    }
+
+    startBtn.addEventListener('click', resetGame);
+
+    // Init
+    initStars();
+    gameLoop();
+
+</script>
+</body>
+</html>
+```
+
+### Key Features Included:
+1.  **Delta-Inspired Movement:** The ship has a responsive feel with boundaries.
+2.  **Parallax Background:** Multiple layers of stars move at different speeds to create a sense of depth.
+3.  **Dynamic Difficulty:** The `gameSpeed` variable increases slightly over time, and the enemy spawn rate adjusts accordingly.
+4.  **Retro Visuals:** 
+    *   **Neon Glow:** Uses `shadowBlur` to mimic the vibrant colors of 80s arcade cabinets.
+    *   **Pixelated Feel:** Uses a high-contrast color palette (Cyan, Magenta, Lime).
+    *   **Particle System:** Explosions occur when enemies are destroyed.
+5.  **Responsive Logic:** Handles multiple simultaneous enemies and projectiles using standard game loop patterns (Update/Draw).
+
+### How to Play:
+*   **Move:** Use the **Arrow Keys** or **WASD**.
+*   **Shoot:** Press the **Spacebar**.
+*   **Goal:** Survive as long as possible and destroy enemies to increase your score. The game gets faster the longer you survive!

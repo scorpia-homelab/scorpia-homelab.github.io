@@ -1,0 +1,4 @@
+We need answer user: "Describe a rainy day in exactly three sentences. Do not write more or fewer than three sentences." Need produce exactly three sentences. Need ensure sentence count. Could be simple: "Rain tapped against the window in steady silver lines. The streets shimmered under a soft gray sky. Umbrellas bloomed like dark flowers along the sidewalk." Count: 1 Rain tapped... 2 The streets... 3 Umbrellas... Good. Need final only three sentences. Ensure no abbreviations with periods? None.
+
+
+Rain tapped against the window in steady silver lines. The streets shimmered under a soft gray sky. Umbrellas bloomed like dark flowers along the sidewalk.

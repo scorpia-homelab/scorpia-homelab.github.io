@@ -1,0 +1,1 @@
+"All but 9 die" means that 9 sheep survive (the ones that are *not* among those that died). So **9 sheep are left.**

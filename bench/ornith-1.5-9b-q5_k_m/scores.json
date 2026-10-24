@@ -1,0 +1,15 @@
+{
+  "reasoning": 10,
+  "creative": 9,
+  "breakout": 4,
+  "delta": 2,
+  "fractal": 1,
+  "_notes": {
+    "method": "headless play-test (playtest.py) + static diagnosis (game_diag.py)",
+    "reasoning": "riddle correct (9), clean single-step explanation",
+    "creative": "best prose of this batch — restrained, coherent, real twist",
+    "breakout": "paints initial frame then crashes: 'Cannot read properties of undefined (reading forEach)'; no animation, no input response; markdown prose mixed into the file",
+    "delta": "JS syntax error 'Unexpected token function'; canvas never paints; file contains feature-list prose instead of a clean game",
+    "fractal": "no canvas and no script in the file at all — not a game"
+  }
+}

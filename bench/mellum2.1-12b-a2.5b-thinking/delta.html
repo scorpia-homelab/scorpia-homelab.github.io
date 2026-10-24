@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Delta Retro Shooter</title>
+<style>
+  body {
+    margin: 0;
+    background:#000;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+    font-family:monospace;
+    color:#fff;
+    overflow:hidden;
+  }
+  canvas {
+    border:2px solid #0f0;
+    background:#000;
+  }
+  #score {
+    position:absolute;
+    top:10px;
+    left:10px;
+    color:#fff;
+    font-family:monospace;
+  }
+</style>
+</head>
+<body>
+<div id="score">Score: 0</div>
+<canvas id="game" width="800" height="400"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+// Player
+const player = {
+  x: canvas.width / 2,
+  y: canvas.height - 60,
+  width: 40,
+  height: 20,
+  speed: 6
+};
+
+// Game state
+let enemies = [];
+let bullets = [];
+let score = 0;
+let gameOver = false;
+let keys = {};
+let lastSpawn = Date.now();
+
+// Input handling
+window.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (e.key === ' ' && gameOver) {
+    resetGame();
+  }
+});
+window.addEventListener('keyup', e => keys[e.key] = false);
+
+// Reset game function
+function resetGame() {
+  player.x = canvas.width / 2;
+  enemies = [];
+  bullets = [];
+  score = 0;
+  gameOver = false;
+  document.getElementById('score').textContent = 'Score: 0';
+}
+
+// Game loop
+function loop() {
+  // Clear canvas
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Draw simple starfield background
+  ctx.fillStyle = '#0f0';
+  for (let i = 0; i < 30; i++) {
+    const x = Math.random() * canvas.width;
+    const y = Math.random() * canvas.height;
+    ctx.beginPath();
+    ctx.arc(x, y, 1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Player movement
+  if (keys['ArrowLeft']) player.x -= player.speed;
+  if (keys['ArrowRight']) player.x += player.speed;
+  player.x = Math.max(player.width / 2, Math.min(canvas.width - player.width / 2, player.x));
+
+  // Shoot
+  if ((keys[' '] || keys['Space']) && !gameOver) {
+    bullets.push({
+      x: player.x,
+      y: player.y,
+      speed: 12
+    });
+  }
+
+  // Spawn enemies periodically
+  if (Date.now() - lastSpawn > 800) {
+    enemies.push({
+      x: canvas.width,
+      y: Math.random() * (canvas.height - 50),
+      width: 30,
+      height: 20,
+      speed: 4
+    });
+    lastSpawn = Date.now();
+  }
+
+  // Update enemies
+  enemies.forEach((e, i) => {
+    e.x -= e.speed;
+    // Remove if off screen
+    if (e.x + e.width < 0) {
+      enemies.splice(i, 1);
+      return;
+    }
+    // Draw enemy
+    ctx.fillStyle = '#f00';
+    ctx.fillRect(e.x, e.y, e.width, e.height);
+  });
+
+  // Update bullets
+  bullets.forEach((b, i) => {
+    b.x += b.speed;
+    // Remove if off screen
+    if (b.x > canvas.width) {
+      bullets.splice(i, 1);
+      return;
+    }
+    // Draw bullet
+    ctx.fillStyle = '#ffff00';
+    ctx.fillRect(b.x, b.y, 3, 15);
+  });
+
+  // Collision bullets vs enemies
+  bullets.forEach((b, bi) => {
+    enemies.forEach((e, ei) => {
+      if (b.x < e.x + e.width &&
+          b.x + 3 > e.x &&
+          b.y < e.y + e.height &&
+          b.y + 15 > e.y) {
+        // Remove both
+        bullets.splice(bi, 1);
+        enemies.splice(ei, 1);
+        score += 10;
+        document.getElementById('score').textContent = 'Score: ' + score;
+      }
+    });
+  });
+
+  // Player collision with enemies
+  enemies.forEach(e => {
+    if (player.x < e.x + e.width &&
+        player.x + player.width > e.x &&
+        player.y < e.y + e.height &&
+        player.y + player.height > e.y) {
+      gameOver = true;
+    }
+  });
+
+  // Draw player
+  ctx.fillStyle = '#0f0';
+  ctx.fillRect(player.x - player.width / 2, player.y, player.width, player.height);
+
+  // Draw game over text
+  if (gameOver) {
+    ctx.fillStyle = '#ff0';
+    ctx.font = '30px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2);
+    ctx.font = '16px monospace';
+    ctx.fillText('Press SPACE to restart', canvas.width / 2, canvas.height / 2 + 40);
+  }
+
+  requestAnimationFrame(loop);
+}
+
+// Start game
+loop();
+</script>
+</body>
+</html>

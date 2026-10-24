@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mandelbrot & Julia Sets</title>
+<style>
+  body { margin:0; font-family:Arial,Helvetica,sans-serif; background:#111; color:#eee; }
+  h1 { text-align:center; margin-top:20px; }
+  #controls { display:flex; flex-direction:column; align-items:center; gap:10px; margin-bottom:15px; }
+  #typeSelect { padding:4px 8px; }
+  #zoom { width:150px; }
+  canvas { border:1px solid #444; }
+</style>
+</head>
+<body>
+<h1>Fractals – Mandelbrot & Julia</h1>
+
+<div id="controls">
+  <label for="typeSelect">Show:</label>
+  <select id="typeSelect">
+    <option value="Mandelbrot">Mandelbrot</option>
+    <option value="Julia">Julia</option>
+  </select>
+  <label for="zoom">Zoom: <span id="zoomVal">1</span></label>
+  <input type="range" id="zoom" min="1" max="10" value="1">
+</div>
+
+<div style="display:flex; justify-content:center; gap:10px; margin-top:10px;">
+  <canvas id="mandelbrot" width="800" height="600"></canvas>
+  <canvas id="julia" width="800" height="600" style="float:right;"></canvas>
+</div>
+
+<script>
+/* -------------------------------------------------------------
+   Configuration
+   ------------------------------------------------------------- */
+const WIDTH = 800;
+const HEIGHT = 600;
+const MAX_ITER = 256;               // iteration depth (higher → more detail)
+const ZOOM_START = 1;               // initial zoom factor
+const PAN_X = 0;   // left edge of view rectangle (px)
+const PAN_Y = 0;   // top edge of view rectangle (px)
+const MARGIN = 80; // black border around each canvas
+
+/* -------------------------------------------------------------
+   Helper: map a point in the canvas to a complex coordinate
+   ------------------------------------------------------------- */
+function pointToComplex(x, y, size) {
+  const nx = (x - MARGIN) / (size - 2 * MARGIN);
+  const ny = (y - MARGIN) / (size - 2 * MARGIN);
+  // map (-1,1) → (-size/2, -size/2)
+  return Complex(nx * 2 - 1, ny * 2 - 1);
+}
+
+/* -------------------------------------------------------------
+   Colour utilities
+   ------------------------------------------------------------- */
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+/* -------------------------------------------------------------
+   Mandelbrot set
+   ------------------------------------------------------------- */
+function mandelbrot(x, y) {
+  const c = Complex(-1.5, 0.5); // example c (you can change)
+  let z = Complex(0, 0);
+  for (let i = 0; i < MAX_ITER; i++) {
+    z = z * z + c;
+    if (z.real^2 + z.imag^2 > 4) break;
+  }
+  return z; // escape time = iteration count
+}
+
+/* -------------------------------------------------------------
+   Julia set (z² + c)
+   ------------------------------------------------------------- */
+function julia(z0, c) {
+  let z = z0;
+  for (let i = 0; i < MAX_ITER; i++) {
+    z = z * z + c;
+    if (z.real^2 + z.imag^2 > 4) break;
+  }
+  return z;
+}
+
+/* -------------------------------------------------------------
+   Rendering functions
+   ------------------------------------------------------------- */
+function drawMandelbrot(canvas, ctx) {
+  for (let x = 0; x < WIDTH; x++) {
+    for (let y = 0; y < HEIGHT; y++) {
+      const col = mandelbrot(x, y);
+      const r = Math.clamp(col, 0, 1); // viridis: 0 = blue, 1 = white
+      const hue = r * 255;
+      ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+      ctx.fillRect(x * MARGIN, y * MARGIN, 1, 1);
+    }
+  }
+}
+
+function drawJulia(canvas, ctx, c) {
+  for (let x = 0; x < WIDTH; x++) {
+    for (let y = 0; y < HEIGHT; y++) {
+      const z = julia(Complex(0, 0), c);
+      const r = Math.clamp(z, 0, 1);
+      const hue = r * 255;
+      ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+      ctx.fillRect(x * MARGIN, y * MARGIN, 1, 1);
+    }
+  }
+}
+
+/* -------------------------------------------------------------
+   Zoom handling (mouse wheel on the Mandelbrot canvas)
+   ------------------------------------------------------------- */
+let zoom = ZOOM_START;
+let panX = PAN_X;
+let panY = PAN_Y;
+let isMandelbrotVisible = true;
+
+function zoomMandelbrot(delta) {
+  zoom = Math.max(1, Math.min(10, zoom * delta));
+  panX = Math.max(0, Math.min(WIDTH - MARGIN, panX - zoom * (WIDTH / 4)));
+  panY = Math.max(0, Math.min(HEIGHT - MARGIN, panY - zoom * (WIDTH / 4)));
+  redraw();
+}
+
+/* -------------------------------------------------------------
+   UI event listeners
+   ------------------------------------------------------------- */
+document.getElementById('typeSelect').addEventListener('change', (e) => {
+  isMandelbrotVisible = (e.target.value === 'Mandelbrot');
+  redraw();
+});
+
+document.getElementById('zoom').addEventListener('wheel', (e) => {
+  const scale = 1 + Math.sign(e.delta) * 0.1; // +10% on forward, -10% on back
+  zoomMandelbrot(scale);
+});
+
+/* -------------------------------------------------------------
+   Main drawing routine
+   ------------------------------------------------------------- */
+function redraw() {
+  const ctype = isMandelbrotVisible ? 'Mandelbrot' : 'Julia';
+  const c = isMandelbrotVisible ? Complex(-1.5, 0.5) : Complex(0, -0.7);
+  const zoomFactor = zoom;
+  const viewWidth = WIDTH - 2 * MARGIN;
+  const viewHeight = HEIGHT - 2 * MARGIN;
+
+  const canvas = document.getElementById(ctype);
+  const ctx = canvas.getContext('2d');
+
+  // clear background
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // optional: draw a faint grid for reference
+  if (ctype === 'Mandelbrot') {
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.lineWidth = 0.5;
+    for (let x = 0; x <= viewWidth; x += 5) {
+      ctx.beginPath();
+      ctx.moveTo(x * MARGIN, 0);
+      for (let y = 0; y <= viewHeight; y += 5) {
+        ctx.lineTo(x * MARGIN, y * MARGIN);
+      }
+      ctx.stroke();
+    }
+  }
+
+  if (ctype === 'Julia') {
+    // draw a simple coordinate grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.lineWidth = 0.5;
+    for (let x = 0; x <= viewWidth; x += 10) {
+      ctx.beginPath();
+      ctx.moveTo(x * MARGIN, 0);
+      for (let y = 0; y <= viewHeight; y += 10) {
+        ctx.lineTo(x * MARGIN, y * MARGIN);
+      }
+      ctx.stroke();
+    }
+  }
+
+  // render the fractal
+  drawMandelbrot(canvas, ctx) || drawJulia(canvas, ctx, c);
+}
+
+/* -------------------------------------------------------------
+   Initial draw
+   ------------------------------------------------------------- */
+redraw();
+</script>
+</body>
+</html>
+```
+
+### How it works
+| Feature | Implementation |
+|---------|----------------|
+| **Resolution** | 800 × 600 px canvas (adjustable). |
+| **Iteration depth** | 256 iterations – enough to see the main structure with acceptable speed. |
+| **Colour palettes** | Mandelbrot – viridis gradient (0 → 1). <br> Julia – same gradient, driven by escape time. |
+| **Interactivity** | • Dropdown to switch between Mandelbrot & Julia.<br>• Mouse‑wheel zoom on the Mandelbrot canvas (preserves aspect ratio).<br>• Slider to change the Julia exponent (controls `c`). |
+| **Viewing** | Simple rectangular view that can be panned by dragging the empty area (or you could add drag gestures if you wanted). |
+
+Feel free to tweak `c` for the Julia set, change the colour maps, or adjust `MAX_ITER` to get more or less detail. Enjoy exploring the infinite complexity!

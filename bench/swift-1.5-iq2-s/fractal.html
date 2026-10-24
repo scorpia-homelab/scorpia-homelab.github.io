@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mandelbrot and Julia Sets</title>
+<style>
+  :root {
+    --bg: #0f141b;
+    --panel: #161d27;
+    --border: #2a3546;
+    --text: #eef3f8;
+    --muted: #9fb0c3;
+    --accent: #ff833b;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: radial-gradient(circle at 20% 10%, #1a2432 0%, var(--bg) 65%);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  header {
+    padding: 28px 24px 10px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: 30px;
+    font-weight: 650;
+    letter-spacing: .2px;
+  }
+
+  .sub {
+    color: var(--muted);
+    margin: 6px 0 0;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  .controls {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 14px 24px;
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: center;
+  }
+
+  label {
+    font-size: 14px;
+    color: #d7e0ea;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  select, button {
+    background: #232c39;
+    border: 1px solid #3b4a5f;
+    color: var(--text);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  select:hover, button:hover {
+    background: #2b3748;
+  }
+
+  .panels {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 24px;
+    display: grid;
+    gap: 24px;
+    grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+  }
+
+  .panel {
+    border: 1px solid var(--border);
+    background: var(--panel);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  }
+
+  .panel h2 {
+    margin: 0;
+    padding: 14px 18px 6px;
+    font-size: 19px;
+  }
+
+  .formula {
+    padding: 0 18px 10px;
+    margin: 0;
+    color: var(--muted);
+    font-size: 13.5px;
+    min-height: 20px;
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: #000;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .hint {
+    padding: 8px 18px 14px;
+    color: var(--muted);
+    font-size: 13px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .julia-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 12px 18px;
+    background: #1b2330;
+    border-top: 1px solid var(--border);
+    align-items: center;
+  }
+
+  input[type="range"] {
+    width: min(220px, 60vw);
+    accent-color: var(--accent);
+  }
+
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    color: #ffd9a8;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Mandelbrot &amp; Julia Sets</h1>
+  <p class="sub">
+    Two views of the quadratic map z ↦ z² + c. The Mandelbrot set varies c;
+    the Julia set fixes c and varies the starting point.
+  </p>
+</header>
+
+<section class="controls" aria-label="Global controls">
+  <label>
+    Palette
+    <select id="palette">
+      <option value="inferno" selected>Inferno</option>
+      <option value="ocean">Ocean</option>
+      <option value="viridis">Viridis</option>
+    </select>
+  </label>
+
+  <label>
+    Max iterations
+    <select id="maxIter">
+      <option value="100">100</option>
+      <option value="200">200</option>
+      <option value="300" selected>300</option>
+      <option value="500">500</option>
+      <option value="800">800</option>
+    </select>
+  </label>
+
+  <button id="resetViews">Reset views</button>
+</section>
+
+<main class="panels">
+  <section class="panel" aria-label="Mandelbrot set">
+    <h2>Mandelbrot Set</h2>
+    <p class="formula">c = x + iy varies; iterate z<sub>0</sub> = 0.</p>
+    <canvas id="mandelbrot" width="900" height="600"></canvas>
+    <p class="hint">Scroll to zoom, drag to pan. Black regions are points that do not escape within the iteration limit.</p>
+  </section>
+
+  <section class="panel" aria-label="Julia set">
+    <h2>Julia Set</h2>
+    <p class="formula">c is fixed; z<sub>0</sub> = x + iy varies.</p>
+    <canvas id="julia" width="900" height="600"></canvas>
+
+    <div class="julia-controls">
+      <label>c real <input type="range" id="cRe" min="-1.5" max="1.5" step="0.001" value="-0.8"></label>
+      <label>c imag <input type="range" id="cIm" min="-1.5" max="1.5" step="0.001" value="0.156"></label>
+      <span class="mono" id="cValue">-0.800 + 0.156i</span>
+      <button id="resetC" title="Reset c to -0.8 + 0.156i">↺</button>
+    </div>
+
+    <p class="hint">Scroll to zoom, drag to pan. Adjust c to morph the Julia set.</p>
+  </section>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  const mandelCanvas = document.getElementById("mandelbrot");
+  const juliaCanvas = document.getElementById("julia");
+  const mctx = mandelCanvas.getContext("2d");
+  const jctx = juliaCanvas.getContext("2d");
+
+  const paletteSelect = document.getElementById("palette");
+  const maxIterSelect = document.getElementById("maxIter");
+  const cReInput = document.getElementById("cRe");
+  const cImInput = document.getElementById("cIm");
+  const cValueSpan = document.getElementById("cValue");
+
+  let paletteName = "inferno";
+  let maxIter = parseInt(maxIterSelect.value, 10);
+  let lut;
+
+  const LN2 = Math.LN2;
+  const BAND_SCALE = 0.15;
+  const ESCAPE_RADIUS_SQ = 4; // |z| > 2
+
+  const PALETTES = {
+    inferno: [
+      [0, 0, 4],
+      [22, 8, 50],
+      [82, 28, 123],
+      [158, 31, 93],
+      [221, 74, 69],
+      [255, 131, 59],
+      [255, 201, 90],
+      [255, 242, 204]
+    ],
+    ocean: [
+      [0, 0, 4],
+      [0, 28, 70],
+      [1, 58, 99],
+      [1, 122, 176],
+      [75, 191, 230],
+      [161, 227, 244],
+      [255, 255, 216]
+    ],
+    viridis: [
+      [68, 1, 84],
+      [72, 40, 120],
+      [59, 82, 139],
+      [44, 127, 184],
+      [33, 179, 153],
+      [90, 209, 118],
+      [164, 227, 79],
+      [253, 231, 37]
+    ]
+  };
+
+  function samplePalette(stops, t) {
+    if (t <= 0) return stops[0];
+    if (t >= 1) return stops[stops.length - 1];
+
+    const pos = t * (stops.length - 1);
+    const i = Math.floor(pos);
+    const f = pos - i;
+    const a = stops[i];
+    const b = stops[Math.min(i + 1, stops.length - 1)];
+
+    return [
+      a[0] + (b[0] - a[0]) * f,
+      a[1] + (b[1] - a[1]) * f,
+      a[2] + (b[2] - a[2]) * f
+    ];
+  }
+
+  function buildLUT() {
+    const stops = PALETTES[paletteName] || PALETTES.inferno;
+    lut = new Uint8Array(768);
+
+    for (let i = 0; i < 256; i++) {
+      const c = samplePalette(stops, i / 255);
+      lut[i * 3] = Math.round(c[0]);
+      lut[i * 3 + 1] = Math.round(c[1]);
+      lut[i * 3 + 2] = Math.round(c[2]);
+    }
+  }
+
+  const mandelView = { re: -0.5, im: 0, scale: 3 };
+  const juliaView = { re: 0, im: 0, scale: 3 };
+
+  let cRe = -0.8;
+  let cIm = 0.156;
+
+  function renderFractal(canvas, ctx, view, cReal, cImag, isJulia) {
+    const w = canvas.width;
+    const h = canvas.height;
+
+    let img = canvas._imgData;
+    if (!img) {
+      img = ctx.createImageData(w, h);
+      canvas._imgData = img;
+    }
+
+    const data = img.data;
+    const scale = view.scale;
+    const aspect = h / w;
+
+    for (let y = 0; y < h; y++) {
+      const imBase = view.im - (y / h - 0.5) * scale * aspect;
+
+      for (let x = 0; x < w; x++) {
+        const re = view.re + (x / w - 0.5) * scale;
+
+        let zr, zi, cR, cI;
+
+        if (isJulia) {
+          cR = cReal;
+          cI = cImag;
+          zr = re;
+          zi = imBase;
+        } else {
+          cR = re;
+          cI = imBase;
+          zr = 0;
+          zi = 0;
+        }
+
+        let n = 0;
+
+        for (; n < maxIter; n++) {
+          const zr2 = zr * zr;
+          const zi2 = zi * zi;
+
+          if (zr2 + zi2 > ESCAPE_RADIUS_SQ) break;
+
+          zi = 2 * zr * zi + cI;
+          zr = zr2 - zi2 + cR;
+        }
+
+        const idx = (y * w + x) * 4;
+
+        if (n >= maxIter) {
+          data[idx] = lut[0];
+          data[idx + 1] = lut[1];
+          data[idx + 2] = lut[2];
+          data[idx + 3] = 255;
+        } else {
+          const absZ = zr * zr + zi * zi;
+
+          // Smooth iteration count:
+          // nu = n + 1 - log2(log(|z|) / log(2))
+          let smooth = n + 1 - Math.log((0.5 * Math.log(absZ)) / LN2) / LN2;
+
+          if (smooth < 0) smooth = 0;
+
+          const t = (smooth * BAND_SCALE) % 1;
+          if (t < 0) t += 1;
+
+          const pi = (t * 255) | 0;
+
+          data[idx] = lut[pi * 3];
+          data[idx + 1] = lut[pi * 3 + 1];
+          data[idx + 2] = lut[pi * 3 + 2];
+          data[idx + 3] = 255;
+        }
+      }
+    }
+
+    ctx.putImageData(img, 0, 0);
+  }
+
+  function renderAll() {
+    renderFractal(mandelCanvas, mctx, mandelView, 0, 0, false);
+    renderFractal(juliaCanvas, jctx, juliaView, cRe, cIm, true);
+  }
+
+  let rafId = 0;
+
+  function queueRender() {
+    if (rafId) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = 0;
+      renderAll();
+    });
+  }
+
+  function zoomAt(canvas, view, px, py, factor) {
+    const w = canvas.width;
+    const h = canvas.height;
+
+    const reAt = view.re + (px / w - 0.5) * view.scale;
+    const imAt = view.im - (py / h - 0.5) * view.scale * (h / w);
+
+    let newScale = view.scale / factor;
+    if (newScale < 1e-8) newScale = 1e-8;
+    if (newScale > 100) newScale = 100;
+
+    const effectiveFactor = view.scale / newScale;
+
+    view.re = reAt + (view.re - reAt) / effectiveFactor;
+    view.im = imAt + (view.im - imAt) / effectiveFactor;
+    view.scale = newScale;
+  }
+
+  function attachInteractions(canvas, view) {
+    let dragging = false;
+    let lastX = 0;
+    let lastY = 0;
+
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+
+      const px = (e.clientX - rect.left) * (canvas.width / rect.width);
+      const py = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+      zoomAt(canvas, view, px, py, e.deltaY < 0 ? 1.2 : 1 / 1.2);
+      queueRender();
+    }, { passive: false });
+
+    canvas.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch (_) {}
+    });
+
+    canvas.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+
+      const dx = (e.clientX - lastX) * (canvas.width / rect.width);
+      const dy = (e.clientY - lastY) * (canvas.height / rect.height);
+
+      const worldPerPixel = view.scale / canvas.width;
+
+      view.re -= dx * worldPerPixel;
+      view.im -= dy * worldPerPixel;
+
+      lastX = e.clientX;
+      lastY = e.clientY;
+      queueRender();
+    });
+
+    canvas.addEventListener("pointerup", () => {
+      dragging = false;
+    });
+
+    canvas.addEventListener("pointercancel", () => {
+      dragging = false;
+    });
+  }
+
+  function updateCValue() {
+    cValueSpan.textContent =
+      `${cRe.toFixed(3)} ${cIm >= 0 ? "+" : "-"} ${Math.abs(cIm).toFixed(3)}i`;
+  }
+
+  paletteSelect.addEventListener("change", () => {
+    paletteName = paletteSelect.value;
+    buildLUT();
+    queueRender();
+  });
+
+  maxIterSelect.addEventListener("change", () => {
+    maxIter = parseInt(maxIterSelect.value, 10);
+    queueRender();
+  });
+
+  cReInput.addEventListener("input", () => {
+    cRe = parseFloat(cReInput.value);
+    updateCValue();
+    queueRender();
+  });
+
+  cImInput.addEventListener("input", () => {
+    cIm = parseFloat(cImInput.value);
+    updateCValue();
+    queueRender();
+  });
+
+  document.getElementById("resetViews").addEventListener("click", () => {
+    mandelView.re = -0.5;
+    mandelView.im = 0;
+    mandelView.scale = 3;
+
+    juliaView.re = 0;
+    juliaView.im = 0;
+    juliaView.scale = 3;
+
+    queueRender();
+  });
+
+  document.getElementById("resetC").addEventListener("click", () => {
+    cReInput.value = "-0.8";
+    cImInput.value = "0.156";
+    cRe = -0.8;
+    cIm = 0.156;
+    updateCValue();
+    queueRender();
+  });
+
+  attachInteractions(mandelCanvas, mandelView);
+  attachInteractions(juliaCanvas, juliaView);
+
+  buildLUT();
+  updateCValue();
+  queueRender();
+})();
+</script>
+
+</body>
+</html>

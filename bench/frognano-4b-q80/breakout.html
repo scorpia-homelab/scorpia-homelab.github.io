@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Breakout</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --accent-color: #38bdf8;
+            --text-color: #e2e8f0;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+            border-radius: 4px;
+        }
+
+        canvas {
+            display: block;
+            background-color: #1e293b;
+            border: 2px solid #334155;
+            border-radius: 4px;
+        }
+
+        /* UI Overlays */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            backdrop-filter: blur(4px);
+            transition: opacity 0.3s ease;
+        }
+
+        .hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            background: linear-gradient(to right, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 20px rgba(56, 189, 248, 0.3);
+        }
+
+        p {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            color: #94a3b8;
+        }
+
+        button {
+            padding: 12px 32px;
+            font-size: 1.2rem;
+            background: linear-gradient(135deg, #38bdf8, #818cf8);
+            border: none;
+            color: white;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.2s;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.6);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        #score-board {
+            position: absolute;
+            top: 10px;
+            left: 15px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            pointer-events: none;
+        }
+
+        #lives-board {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #f472b6;
+            pointer-events: none;
+        }
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    
+    <!-- HUD -->
+    <div id="score-board">Score: 0</div>
+    <div id="lives-board">Lives: 3</div>
+
+    <!-- Start Screen -->
+    <div id="start-screen" class="overlay">
+        <h1>Neon Breakout</h1>
+        <p>Mouse to move. Break all bricks.</p>
+        <button onclick="startGame()">Start Game</button>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="game-over-screen" class="overlay hidden">
+        <h1 id="go-title">Game Over</h1>
+        <p id="final-score">Score: 0</p>
+        <button onclick="resetGame()">Play Again</button>
+    </div>
+</div>
+
+<script>
+    // --- Configuration ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Game Constants
+    const PADDLE_WIDTH = 100;
+    const PADDLE_HEIGHT = 15;
+    const BALL_RADIUS = 8;
+    const BRICK_ROW_COUNT = 6;
+    const BRICK_COLUMN_COUNT = 9;
+    const BRICK_PADDING = 10;
+    const BRICK_OFFSET_TOP = 50;
+    const BRICK_OFFSET_LEFT = 35;
+    const BRICK_WIDTH = (canvas.width - (BRICK_OFFSET_LEFT * 2) - (BRICK_PADDING * (BRICK_COLUMN_COUNT - 1))) / BRICK_COLUMN_COUNT;
+    const BRICK_HEIGHT = 25;
+
+    // Colors
+    const COLORS = {
+        paddle: '#38bdf8',
+        ball: '#ffffff',
+        text: '#e2e8f0'
+    };
+
+    // --- Game State ---
+    let score = 0;
+    let lives = 3;
+    let isGameRunning = false;
+    let animationId;
+
+    // Entities
+    const paddle = { x: canvas.width / 2 - PADDLE_WIDTH / 2, y: canvas.height - 40 };
+    let ball = { x: canvas.width / 2, y: canvas.height - 60, dx: 4, dy: -4, speed: 5 };
+    
+    // Brick Data
+    let bricks = [];
+
+    // Particles Array for effects
+    let particles = [];
+
+    // --- Initialization ---
+
+    function initBricks() {
+        bricks = [];
+        const brickWidth = BRICK_WIDTH;
+        const brickHeight = BRICK_HEIGHT;
+        
+        for(let c=0; c<BRICK_COLUMN_COUNT; c++) {
+            bricks[c] = [];
+            for(let r=0; r<BRICK_ROW_COUNT; r++) {
+                // Color variation based on row
+                let hue = 200 + (r * 40); 
+                const color = `hsl(${hue}, 70%, 60%)`;
+                
+                bricks[c][r] = { 
+                    x: 0, y: 0, status: 1, 
+                    color: color 
+                };
+            }
+        }
+    }
+
+    function resetBall() {
+        ball.x = canvas.width / 2;
+        ball.y = canvas.height - 60;
+        // Randomize start direction slightly
+        ball.dx = 4 * (Math.random() > 0.5 ? 1 : -1); 
+        ball.dy = -4;
+    }
+
+    function createParticles(x, y, color) {
+        for(let i=0; i<8; i++) {
+            particles.push({
+                x: x,
+                y: y,
+                dx: (Math.random() - 0.5) * 4,
+                dy: (Math.random() - 0.5) * 4,
+                life: 1.0,
+                color: color
+            });
+        }
+    }
+
+    // --- Input Handling ---
+
+    canvas.addEventListener('mousemove', function(e) {
+        const rect = canvas.getBoundingClientRect();
+        let relativeX = e.clientX - rect.left;
+        
+        // Constrain paddle within canvas
+        if(relativeX > 0 && relativeX < canvas.width) {
+            paddle.x = relativeX - PADDLE_WIDTH / 2;
+        }
+    });
+
+    // --- Core Logic ---
+
+    function collisionDetection() {
+        for(let c=0; c<BRICK_COLUMN_COUNT; c++) {
+            for(let r=0; r<BRICK_ROW_COUNT; r++) {
+                const b = bricks[c][r];
+                if(b.status === 1) {
+                    // Simple AABB Collision
+                    if(ball.x > b.x && ball.x < b.x + BRICK_WIDTH && ball.y > b.y && ball.y < b.y + BRICK_HEIGHT) {
+                        ball.dy = -ball.dy;
+                        b.status = 0;
+                        score += 10;
+                        document.getElementById('score-board').innerText = `Score: ${score}`;
+                        
+                        // Visual feedback
+                        createParticles(b.x + BRICK_WIDTH/2, b.y + BRICK_HEIGHT/2, b.color);
+
+                        // Check Win
+                        if(score === BRICK_ROW_COUNT * BRICK_COLUMN_COUNT * 10) {
+                            gameOver(true);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    function update() {
+        if (!isGameRunning) return;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Move Ball
+        ball.x += ball.dx;
+        ball.y += ball.dy;
+
+        // Wall Collision (Left/Right)
+        if(ball.x + BALL_RADIUS > canvas.width || ball.x - BALL_RADIUS < 0) {
+            ball.dx = -ball.dx;
+        }
+
+        // Wall Collision (Top)
+        if(ball.y - BALL_RADIUS < 0) {
+            ball.dy = -ball.dy;
+        } 
+        // Floor Collision (Death)
+        else if(ball.y + BALL_RADIUS > canvas.height) {
+            lives--;
+            document.getElementById('lives-board').innerText = `Lives: ${lives}`;
+            
+            if(!lives) {
+                gameOver(false);
+            } else {
+                resetBall();
+            }
+        }
+
+        // Paddle Collision
+        // Check if ball is at paddle height and moving down
+        if(ball.y + BALL_RADIUS >= paddle.y && 
+           ball.y - BALL_RADIUS <= paddle.y + PADDLE_HEIGHT &&
+           ball.x >= paddle.x && 
+           ball.x <= paddle.x + PADDLE_WIDTH) {
+            
+            // Calculate hit position relative to center of paddle (-1 to 1)
+            let collidePoint = ball.x - (paddle.x + PADDLE_WIDTH / 2);
+            collidePoint = collidePoint / (PADDLE_WIDTH / 2);
+
+            // Angle calculation: Max angle 60 degrees (PI/3)
+            let angle = collidePoint * (Math.PI / 3);
+
+            ball.dx = ball.speed * Math.sin(angle);
+            ball.dy = -ball.speed * Math.cos(angle);
+            
+            // Ensure minimum speed
+            if(ball.speed < 5) ball.speed += 0.1;
+        }
+
+        collisionDetection();
+
+        // Draw Paddle
+        ctx.beginPath();
+        ctx.roundRect(paddle.x, paddle.y, PADDLE_WIDTH, PADDLE_HEIGHT, 8);
+        ctx.fillStyle = COLORS.paddle;
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = COLORS.paddle;
+        ctx.fill();
+        ctx.closePath();
+
+        // Draw Bricks
+        for(let c=0; c<BRICK_COLUMN_COUNT; c++) {
+            for(let r=0; r<BRICK_ROW_COUNT; r++) {
+                if(bricks[c][r].status === 1) {
+                    const brickX = (c * (BRICK_WIDTH + BRICK_PADDING)) + BRICK_OFFSET_LEFT;
+                    const brickY = (r * (BRICK_HEIGHT + BRICK_PADDING)) + BRICK_OFFSET_TOP;
+                    
+                    bricks[c][r].x = brickX;
+                    bricks[c][r].y = brickY;
+
+                    ctx.beginPath();
+                    ctx.rect(brickX, brickY, BRICK_WIDTH, BRICK_HEIGHT);
+                    ctx.fillStyle = bricks[c][r].color;
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = bricks[c][r].color;
+                    ctx.fill();
+                    ctx.closePath();
+                }
+            }
+        }
+
+        // Draw Ball
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI*2);
+        ctx.fillStyle = COLORS.ball;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = COLORS.ball;
+        ctx.fill();
+        ctx.closePath();
+
+        // Draw Particles
+        for(let i=particles.length-1; i>=0; i--) {
+            let p = particles[i];
+            p.x += p.dx;
+            p.y += p.dy;
+            p.life -= 0.05;
+
+            if(p.life <= 0) {
+                particles.splice(i, 1);
+            } else {
+                ctx.globalAlpha = p.life;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
+                ctx.fillStyle = p.color;
+                ctx.fill();
+                ctx.closePath();
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        animationId = requestAnimationFrame(update);
+    }
+
+    // --- Game Flow Control ---
+
+    function startGame() {
+        document.getElementById('start-screen').classList.add('hidden');
+        resetVariables();
+        initBricks();
+        isGameRunning = true;
+        update();
+    }
+
+    function resetVariables() {
+        score = 0;
+        lives = 3;
+        ball.speed = 5;
+        document.getElementById('score-board').innerText = `Score: ${score}`;
+        document.getElementById('lives-board').innerText = `Lives: ${lives}`;
+    }
+
+    function gameOver(win) {
+        isGameRunning = false;
+        cancelAnimationFrame(animationId);
+        
+        const screen = document.getElementById('game-over-screen');
+        const title = document.getElementById('go-title');
+        const finalScore = document.getElementById('final-score');
+        
+        screen.classList.remove('hidden');
+        if(win) {
+            title.innerText = "You Win!";
+            title.style.color = "#4ade80"; // Green
+        } else {
+            title.innerText = "Game Over";
+            title.style.color = "#f87171"; // Red
+        }
+        
+        finalScore.innerText = `Final Score: ${score}`;
+    }
+
+    function resetGame() {
+        document.getElementById('game-over-screen').classList.add('hidden');
+        startGame();
+    }
+
+</script>
+</body>
+</html>
+```

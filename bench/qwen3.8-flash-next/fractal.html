@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mandelbrot and Julia Sets</title>
+<style>
+  :root {
+    --bg: #071018;
+    --panel: #101824;
+    --text: #e8eef7;
+    --muted: #9fb0c3;
+    --accent: #4cc9f0;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.4;
+  }
+
+  main {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 1rem;
+  }
+
+  h1 {
+    font-size: 1.6rem;
+    margin: 0 0 .5rem;
+  }
+
+  .intro {
+    color: var(--muted);
+    margin: 0 0 1rem;
+    max-width: 70ch;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1rem;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid #22344a;
+    border-radius: 14px;
+    padding: 1rem;
+  }
+
+  .panel h2 {
+    margin: 0 0 .25rem;
+    font-size: 1.15rem;
+  }
+
+  .formula {
+    color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .95rem;
+    margin-bottom: .75rem;
+  }
+
+  canvas {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1 / 1;
+    display: block;
+    border-radius: 10px;
+    background: #000;
+    cursor: crosshair;
+    touch-action: none;
+  }
+
+  .controls {
+    display: grid;
+    gap: .75rem;
+    margin-top: .75rem;
+  }
+
+  .field {
+    display: grid;
+    gap: .25rem;
+  }
+
+  label {
+    color: var(--muted);
+    font-size: .85rem;
+  }
+
+  input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+  }
+
+  .buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+  }
+
+  button {
+    font: inherit;
+    background: #1b2a3b;
+    color: var(--text);
+    border: 1px solid #2d4258;
+    border-radius: 8px;
+    padding: .5rem .75rem;
+    cursor: pointer;
+  }
+
+  button:hover {
+    background: #24374c;
+  }
+
+  button:focus-visible,
+  input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .85rem;
+    color: var(--muted);
+  }
+
+  .note {
+    color: var(--muted);
+    font-size: .85rem;
+    margin: .75rem 0 0;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Mandelbrot and Julia sets</h1>
+  <p class="intro">
+    Both images are computed from the quadratic iteration z ↦ z² + c.
+    The Mandelbrot set varies c and starts at z = 0; the Julia set fixes c
+    and starts at each pixel z = x + iy. Escape radius is |z| > 2, with smooth coloring.
+  </p>
+
+  <noscript>
+    <p class="note">This page requires JavaScript to render the fractals.</p>
+  </noscript>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>Mandelbrot set</h2>
+      <div class="formula">
+        z<sub>n+1</sub> = z<sub>n</sub><sup>2</sup> + c, &nbsp; z<sub>0</sub> = 0
+      </div>
+
+      <canvas
+        id="mandelbrotCanvas"
+        width="640"
+        height="640"
+        role="img"
+        aria-label="Mandelbrot set"
+      >Canvas not supported.</canvas>
+
+      <div class="controls">
+        <div class="field">
+          <label for="maxIter">
+            Iteration depth: <span id="iterValue">250</span>
+          </label>
+          <input id="maxIter" type="range" min="64" max="1024" step="1" value="250">
+        </div>
+
+        <div class="buttons">
+          <button id="zoomInMandelbrot" type="button">Zoom in</button>
+          <button id="zoomOutMandelbrot" type="button">Zoom out</button>
+          <button id="resetMandelbrot" type="button">Reset view</button>
+          <button id="useCenterForJulia" type="button">Use center as Julia c</button>
+        </div>
+
+        <div class="value" id="mandelbrotReadout"></div>
+      </div>
+
+      <p class="note">
+        Drag to pan, scroll to zoom, or use zoom buttons.
+        A click without dragging sets the Julia parameter c.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>Julia set</h2>
+      <div class="formula">
+        z<sub>n+1</sub> = z<sub>n</sub><sup>2</sup> + c, &nbsp; z<sub>0</sub> = x + iy
+      </div>
+
+      <canvas
+        id="juliaCanvas"
+        width="640"
+        height="640"
+        role="img"
+        aria-label="Julia set"
+      >Canvas not supported.</canvas>
+
+      <div class="controls">
+        <div class="field">
+          <label for="cRe">
+            c real: <span id="cReValue"></span>
+          </label>
+          <input id="cRe" type="range" min="-2" max="2" step="0.000001" value="-0.743643">
+        </div>
+
+        <div class="field">
+          <label for="cIm">
+            c imaginary: <span id="cImValue"></span>
+          </label>
+          <input id="cIm" type="range" min="-2" max="2" step="0.000001" value="0.131825">
+        </div>
+
+        <div class="buttons">
+          <button id="zoomInJulia" type="button">Zoom in</button>
+          <button id="zoomOutJulia" type="button">Zoom out</button>
+          <button id="resetJuliaView" type="button">Reset view</button>
+          <button id="randomJulia" type="button">Random connected c</button>
+        </div>
+
+        <div class="value" id="juliaReadout"></div>
+      </div>
+
+      <p class="note">
+        Drag to pan, scroll to zoom, or use zoom buttons.
+        Sliders control the fixed c.
+      </p>
+    </section>
+  </div>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  const FULL_RES = 640;
+  const PREVIEW_RES = 128;
+  const PREVIEW_ITER = 96;
+  const CHUNK_ROWS = 8;
+
+  const PALETTE_SIZE = 2048;
+  const COLOR_CYCLES = 4;
+
+  const MIN_HALF_SPAN = 1e-12;
+  const MAX_HALF_SPAN = 4;
+
+  const LOG2 = Math.log(2);
+
+  const mandelbrotCanvas = document.getElementById('mandelbrotCanvas');
+  const juliaCanvas = document.getElementById('juliaCanvas');
+
+  const mandelbrotCtx = mandelbrotCanvas.getContext('2d', { alpha: false });
+  const juliaCtx = juliaCanvas.getContext('2d', { alpha: false });
+
+  const maxIterInput = document.getElementById('maxIter');
+  const iterValue = document.getElementById('iterValue');
+
+  const cReInput = document.getElementById('cRe');
+  const cImInput = document.getElementById('cIm');
+  const cReValue = document.getElementById('cReValue');
+  const cImValue = document.getElementById('cImValue');
+
+  const mandelbrotReadout = document.getElementById('mandelbrotReadout');
+  const juliaReadout = document.getElementById('juliaReadout');
+
+  const mandelbrotView = { cx: -0.75, cy: 0, hs: 1.75 };
+  const juliaView = { cx: 0, cy: 0, hs: 1.6 };
+
+  const mandelbrotDefault = { ...mandelbrotView };
+  const juliaDefault = { ...juliaView };
+
+  let maxIter = Number(maxIterInput.value);
+
+  // Initial Julia parameter: a recognizable “Douady rabbit” parameter.
+  const juliaC = {
+    re: Number(cReInput.value),
+    im: Number(cImInput.value)
+  };
+
+  // Cosine palette.
+  const palette = new Uint8Array(PALETTE_SIZE * 3);
+  for (let i = 0; i < PALETTE_SIZE; i++) {
+    const t = i / (PALETTE_SIZE - 1);
+
+    const r = 0.5 + 0.5 * Math.cos(2 * Math.PI * (t + 0.0));
+    const g = 0.5 + 0.5 * Math.cos(2 * Math.PI * (t + 1 / 3));
+    const b = 0.5 + 0.5 * Math.cos(2 * Math.PI * (t + 2 / 3));
+
+    palette[i * 3] = Math.round(255 * r);
+    palette[i * 3 + 1] = Math.round(255 * g);
+    palette[i * 3 + 2] = Math.round(255 * b);
+  }
+
+  let mandelbrotRenderId = 0;
+  let juliaRenderId = 0;
+
+  let mandelbrotRenderQueued = false;
+  let juliaRenderQueued = false;
+
+  function clamp(v, min, max) {
+    return Math.min(max, Math.max(min, v));
+  }
+
+  function clampView(view) {
+    view.cx = clamp(view.cx, -10, 10);
+    view.cy = clamp(view.cy, -10, 10);
+    view.hs = clamp(view.hs, MIN_HALF_SPAN, MAX_HALF_SPAN);
+  }
+
+  function fmt(v) {
+    if (!Number.isFinite(v)) return 'NaN';
+
+    const abs = Math.abs(v);
+    if (abs !== 0 && abs < 1e-4) return v.toExponential(3);
+    return v.toFixed(6);
+  }
+
+  function paintSmooth(data, p, i, mag2, iter) {
+    // Continuous/smooth iteration count.
+    const logZn = Math.log(mag2) * 0.5;
+    const nu = Math.log(logZn / LOG2) / LOG2;
+
+    let smooth = i + 1 - nu;
+    if (smooth < 0) smooth = 0;
+
+    let t = (smooth / iter) * COLOR_CYCLES;
+    t -= Math.floor(t);
+
+    const idx = (t * (PALETTE_SIZE - 1)) | 0;
+    const pi = idx * 3;
+
+    data[p] = palette[pi];
+    data[p + 1] = palette[pi + 1];
+    data[p + 2] = palette[pi + 2];
+    data[p + 3] = 255;
+  }
+
+  function fillMandelbrotRows(img, w, h, view, iter, pyStart, pyEnd) {
+    const data = img.data;
+
+    const left = view.cx - view.hs;
+    const top = view.cy + view.hs;
+    const stepX = (2 * view.hs) / w;
+    const stepY = (2 * view.hs) / h;
+
+    for (let py = pyStart; py < pyEnd; py++) {
+      const y = top - py * stepY;
+      let p = py * w * 4;
+
+      for (let px = 0; px < w; px++, p += 4) {
+        const x = left + px * stepX;
+
+        // Main cardioid optimization.
+        const xm = x - 0.25;
+        const q = xm * xm + y * y;
+        if (q * (q + xm) <= 0.25 * y * y) {
+          data[p] = 0;
+          data[p + 1] = 0;
+          data[p + 2] = 0;
+          data[p + 3] = 255;
+          continue;
+        }
+
+        // Period-2 bulb optimization.
+        const xb = x + 1;
+        if (xb * xb + y * y <= 0.25) {
+          data[p] = 0;
+          data[p + 1] = 0;
+          data[p + 2] = 0;
+          data[p + 3] = 255;
+          continue;
+        }
+
+        let zx = 0;
+        let zy = 0;
+        let zx2 = 0;
+        let zy2 = 0;
+        let i = 0;
+
+        while (zx2 + zy2 <= 4 && i < iter) {
+          zy = 2 * zx * zy + y;
+          zx = zx2 - zy2 + x;
+          zx2 = zx * zx;
+          zy2 = zy * zy;
+          i++;
+        }
+
+        if (i === iter) {
+          data[p] = 0;
+          data[p + 1] = 0;
+          data[p + 2] = 0;
+          data[p + 3] = 255;
+        } else {
+          paintSmooth(data, p, i, zx2 + zy2, iter);
+        }
+      }
+    }
+  }
+
+  function fillJuliaRows(img, w, h, view, iter, cRe, cIm, pyStart, pyEnd) {
+    const data = img.data;
+
+    const left = view.cx - view.hs;
+    const top = view.cy + view.hs;
+    const stepX = (2 * view.hs) / w;
+    const stepY = (2 * view.hs) / h;
+
+    for (let py = pyStart; py < pyEnd; py++) {
+      const y = top - py * stepY;
+      let p = py * w * 4;
+
+      for (let px = 0; px < w; px++, p += 4) {
+        const x = left + px * stepX;
+
+        let zx = x;
+        let zy = y;
+        let zx2 = zx * zx;
+        let zy2 = zy * zy;
+        let i = 0;
+
+        while (zx2 + zy2 <= 4 && i < iter) {
+          zy = 2 * zx * zy + cIm;
+          zx = zx2 - zy2 + cRe;
+          zx2 = zx * zx;
+          zy2 = zy * zy;
+          i++;
+        }
+
+        if (i === iter) {
+          data[p] = 0;
+          data[p + 1] = 0;
+          data[p + 2] = 0;
+          data[p + 3] = 255;
+        } else {
+          paintSmooth(data, p, i, zx2 + zy2, iter);
+        }
+      }
+    }
+  }
+
+  function copyPreviewToFull(previewImg, fullImg, previewRes, fullRes) {
+    const pd = previewImg.data;
+    const fd = fullImg.data;
+
+    for (let py = 0; py < fullRes; py++) {
+      const sy = (py * previewRes / fullRes) | 0;
+      const srcRow = sy * previewRes;
+      const dstRow = py * fullRes;
+
+      for (let px = 0; px < fullRes; px++) {
+        const sx = (px * previewRes / fullRes) | 0;
+        const src = (srcRow + sx) * 4;
+        const dst = (dstRow + px) * 4;
+
+        fd[dst] = pd[src];
+        fd[dst + 1] = pd[src + 1];
+        fd[dst + 2] = pd[src + 2];
+        fd[dst + 3] = 255;
+      }
+    }
+  }
+
+  function renderMandelbrot() {
+    const id = ++mandelbrotRenderId;
+
+    if (mandelbrotCanvas.width !== FULL_RES) {
+      mandelbrotCanvas.width = FULL_RES;
+      mandelbrotCanvas.height = FULL_RES;
+    }
+
+    // Fast full-frame preview first, then progressive high-quality rows.
+    const previewIter = Math.min(maxIter, PREVIEW_ITER);
+
+    const previewImg = mandelbrotCtx.createImageData(PREVIEW_RES, PREVIEW_RES);
+    fillMandelbrotRows(
+      previewImg,
+      PREVIEW_RES,
+      PREVIEW_RES,
+      mandelbrotView,
+      previewIter,
+      0,
+      PREVIEW_RES
+    );
+
+    const img = mandelbrotCtx.createImageData(FULL_RES, FULL_RES);
+    copyPreviewToFull(previewImg, img, PREVIEW_RES, FULL_RES);
+    mandelbrotCtx.putImageData(img, 0, 0);
+
+    let py = 0;
+
+    function chunk() {
+      if (id !== mandelbrotRenderId) return;
+
+      const start = py;
+      const end = Math.min(py + CHUNK_ROWS, FULL_RES);
+
+      fillMandelbrotRows(
+        img,
+        FULL_RES,
+        FULL_RES,
+        mandelbrotView,
+        maxIter,
+        start,
+        end
+      );
+
+      py = end;
+      mandelbrotCtx.putImageData(img, 0, 0);
+
+      if (py < FULL_RES) requestAnimationFrame(chunk);
+    }
+
+    requestAnimationFrame(chunk);
+  }
+
+  function renderJulia() {
+    const id = ++juliaRenderId;
+
+    if (juliaCanvas.width !== FULL_RES) {
+      juliaCanvas.width = FULL_RES;
+      juliaCanvas.height = FULL_RES;
+    }
+
+    const previewIter = Math.min(maxIter, PREVIEW_ITER);
+
+    const previewImg = juliaCtx.createImageData(PREVIEW_RES, PREVIEW_RES);
+    fillJuliaRows(
+      previewImg,
+      PREVIEW_RES,
+      PREVIEW_RES,
+      juliaView,
+      previewIter,
+      juliaC.re,
+      juliaC.im,
+      0,
+      PREVIEW_RES
+    );
+
+    const img = juliaCtx.createImageData(FULL_RES, FULL_RES);
+    copyPreviewToFull(previewImg, img, PREVIEW_RES, FULL_RES);
+    juliaCtx.putImageData(img, 0, 0);
+
+    let py = 0;
+
+    function chunk() {
+      if (id !== juliaRenderId) return;
+
+      const start = py;
+      const end = Math.min(py + CHUNK_ROWS, FULL_RES);
+
+      fillJuliaRows(
+        img,
+        FULL_RES,
+        FULL_RES,
+        juliaView,
+        maxIter,
+        juliaC.re,
+        juliaC.im,
+        start,
+        end
+      );
+
+      py = end;
+      juliaCtx.putImageData(img, 0, 0);
+
+      if (py < FULL_RES) requestAnimationFrame(chunk);
+    }
+
+    requestAnimationFrame(chunk);
+  }
+
+  function scheduleMandelbrotRender() {
+    if (mandelbrotRenderQueued) return;
+
+    mandelbrotRenderQueued = true;
+    requestAnimationFrame(() => {
+      mandelbrotRenderQueued = false;
+      renderMandelbrot();
+    });
+  }
+
+  function scheduleJuliaRender() {
+    if (juliaRenderQueued) return;
+
+    juliaRenderQueued = true;
+    requestAnimationFrame(() => {
+      juliaRenderQueued = false;
+      renderJulia();
+    });
+  }
+
+  function updateReadouts() {
+    mandelbrotReadout.textContent =
+      `center: ${fmt(mandelbrotView.cx)}, ${fmt(mandelbrotView.cy)}; ` +
+      `half-span: ${fmt(mandelbrotView.hs)}`;
+
+    juliaReadout.textContent =
+      `center: ${fmt(juliaView.cx)}, ${fmt(juliaView.cy)}; ` +
+      `half-span: ${fmt(juliaView.hs)}; ` +
+      `c: ${fmt(juliaC.re)}, ${fmt(juliaC.im)}`;
+  }
+
+  function setJuliaC(re, im) {
+    re = clamp(re, -2, 2);
+    im = clamp(im, -2, 2);
+
+    juliaC.re = re;
+    juliaC.im = im;
+
+    cReInput.value = re.toFixed(6);
+    cImInput.value = im.toFixed(6);
+
+    cReValue.textContent = fmt(re);
+    cImValue.textContent = fmt(im);
+
+    updateReadouts();
+    scheduleJuliaRender();
+  }
+
+  function pixelToComplex(canvas, view, clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+
+    const mx = clamp((clientX - rect.left) / rect.width, 0, 1);
+    const my = clamp((clientY - rect.top) / rect.height, 0, 1);
+
+    const x = view.cx - view.hs + mx * 2 * view.hs;
+    const y = view.cy + view.hs - my * 2 * view.hs;
+
+    return { x, y };
+  }
+
+  function attachPanZoom(canvas, view, scheduleRender, onClick) {
+    let drag = null;
+
+    canvas.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch (_) {
+        // Ignore if pointer capture is unavailable.
+      }
+
+      drag = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        startCx: view.cx,
+        startCy: view.cy,
+        moved: false
+      };
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (!drag || drag.pointerId !== e.pointerId) return;
+
+      const dx = e.clientX - drag.startX;
+      const dy = e.clientY - drag.startY;
+
+      if (!drag.moved && Math.hypot(dx, dy) > 4) {
+        drag.moved = true;
+      }
+
+      if (drag.moved) {
+        const rect = canvas.getBoundingClientRect();
+
+        view.cx = drag.startCx - dx * (2 * view.hs / rect.width);
+        view.cy = drag.startCy + dy * (2 * view.hs / rect.height);
+
+        clampView(view);
+        updateReadouts();
+        scheduleRender();
+      }
+    });
+
+    canvas.addEventListener('pointerup', (e) => {
+      if (!drag || drag.pointerId !== e.pointerId) return;
+
+      if (!drag.moved && onClick) {
+        const c = pixelToComplex(canvas, view, e.clientX, e.clientY);
+        onClick(c.x, c.y);
+      }
+
+      drag = null;
+    });
+
+    canvas.addEventListener('pointercancel', () => {
+      drag = null;
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+
+      if (drag) drag.moved = true;
+
+      const rect = canvas.getBoundingClientRect();
+
+      const mx = clamp((e.clientX - rect.left) / rect.width, 0, 1);
+      const my = clamp((e.clientY - rect.top) / rect.height, 0, 1);
+
+      const point = pixelToComplex(canvas, view, e.clientX, e.clientY);
+
+      const factor = e.deltaY < 0 ? 1 / 1.15 : 1.15;
+      const newHs = clamp(view.hs * factor, MIN_HALF_SPAN, MAX_HALF_SPAN);
+
+      view.cx = point.x + newHs * (1 - 2 * mx);
+      view.cy = point.y + newHs * (2 * my - 1);
+      view.hs = newHs;
+
+      clampView(view);
+      updateReadouts();
+      scheduleRender();
+    }, { passive: false });
+  }
+
+  function zoomView(view, factor) {
+    // factor > 1 zooms in; factor < 1 zooms out.
+    view.hs = clamp(view.hs / factor, MIN_HALF_SPAN, MAX_HALF_SPAN);
+    clampView(view);
+  }
+
+  attachPanZoom(
+    mandelbrotCanvas,
+    mandelbrotView,
+    scheduleMandelbrotRender,
+    (re, im) => setJuliaC(re, im)
+  );
+
+  attachPanZoom(
+    juliaCanvas,
+    juliaView,
+    scheduleJuliaRender,
+    null
+  );
+
+  maxIterInput.addEventListener('input', () => {
+    maxIter = Number(maxIterInput.value);
+    iterValue.textContent = maxIter;
+
+    scheduleMandelbrotRender();
+    scheduleJuliaRender();
+  });
+
+  cReInput.addEventListener('input', () => {
+    juliaC.re = Number(cReInput.value);
+    cReValue.textContent = fmt(juliaC.re);
+
+    updateReadouts();
+    scheduleJuliaRender();
+  });
+
+  cImInput.addEventListener('input', () => {
+    juliaC.im = Number(cImInput.value);
+    cImValue.textContent = fmt(juliaC.im);
+
+    updateReadouts();
+    scheduleJuliaRender();
+  });
+
+  document.getElementById('zoomInMandelbrot').addEventListener('click', () => {
+    zoomView(mandelbrotView, 1.5);
+    updateReadouts();
+    scheduleMandelbrotRender();
+  });
+
+  document.getElementById('zoomOutMandelbrot').addEventListener('click', () => {
+    zoomView(mandelbrotView, 1 / 1.5);
+    updateReadouts();
+    scheduleMandelbrotRender();
+  });
+
+  document.getElementById('resetMandelbrot').addEventListener('click', () => {
+    Object.assign(mandelbrotView, mandelbrotDefault);
+    updateReadouts();
+    scheduleMandelbrotRender();
+  });
+
+  document.getElementById('useCenterForJulia').addEventListener('click', () => {
+    setJuliaC(mandelbrotView.cx, mandelbrotView.cy);
+  });
+
+  document.getElementById('zoomInJulia').addEventListener('click', () => {
+    zoomView(juliaView, 1.5);
+    updateReadouts();
+    scheduleJuliaRender();
+  });
+
+  document.getElementById('zoomOutJulia').addEventListener('click', () => {
+    zoomView(juliaView, 1 / 1.5);
+    updateReadouts();
+    scheduleJuliaRender();
+  });
+
+  document.getElementById('resetJuliaView').addEventListener('click', () => {
+    Object.assign(juliaView, juliaDefault);
+    updateReadouts();
+    scheduleJuliaRender();
+  });
+
+  document.getElementById('randomJulia').addEventListener('click', () => {
+    // Pick a point inside the main cardioid, so the Julia set is connected.
+    const theta = Math.random() * Math.PI * 2;
+    const scale = 0.55 + 0.4 * Math.random();
+
+    const re = (0.5 * Math.cos(theta) - 0.25 * Math.cos(2 * theta)) * scale;
+    const im = (0.5 * Math.sin(theta) - 0.25 * Math.sin(2 * theta)) * scale;
+
+    setJuliaC(re, im);
+  });
+
+  cReValue.textContent = fmt(juliaC.re);
+  cImValue.textContent = fmt(juliaC.im);
+
+  updateReadouts();
+
+  scheduleMandelbrotRender();
+  scheduleJuliaRender();
+})();
+</script>
+</body>
+</html>
+```
+
+Key choices:
+
+- **Resolution:** 640 × 640 per fractal, with a 128 × 128 preview shown immediately while the full image renders progressively.
+- **Iteration depth:** default 250, adjustable from 64 to 1024.
+- **Escape test:** `|z|² > 4`, i.e. escape radius 2.
+- **Coloring:** smooth continuous iteration count mapped through a 2048-entry cosine palette.
+- **Mandelbrot view:** centered at `-0.75 + 0i`, half-span `1.75`, showing the whole recognizable set.
+- **Julia view:** centered at `0 + 0i`, half-span `1.6`, with initial `c = -0.743643 + 0.131825i`, a recognizable rabbit Julia set.
+- **Interactivity:** drag to pan, scroll to zoom, zoom buttons, Julia `c` sliders, click Mandelbrot to choose Julia `c`, random connected `c`, reset views.

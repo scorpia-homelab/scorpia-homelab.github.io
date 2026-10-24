@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pixel Breakout</title>
+<style>
+  body {
+    margin: 0;
+    background:#111;
+    color:#fff;
+    font-family:Arial,Helvetica,sans-serif;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    height:100vh;
+    overflow:hidden;
+  }
+  #gameCanvas {
+    background:#2c3e50;
+    border:4px solid #fff;
+    box-shadow:0 0 20px rgba(255,255,255,.2);
+    cursor:none;
+  }
+  #score {
+    position:absolute;
+    top:10px;
+    left:50%;
+    transform:translateX(-50%);
+    font-size:1.5rem;
+    font-weight:bold;
+  }
+  #controls {
+    margin-top:10px;
+    text-align:center;
+  }
+  #restartBtn {
+    margin-top:15px;
+    padding:8px 16px;
+    font-size:1rem;
+    cursor:pointer;
+    background:#27ae60;
+    color:#fff;
+    border:none;
+    border-radius:4px;
+  }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas" width="600" height="400"></canvas>
+<div id="score">Score: 0</div>
+<div id="controls">
+  <p>Controls: <b>Arrow Keys</b></p>
+  <button id="restartBtn">Restart</button>
+</div>
+
+<script>
+// ---------- Configuration ----------
+const CANVAS = document.getElementById('gameCanvas');
+const ctx = CANVAS.getContext('2d');
+const SCREEN_W = CANVAS.width;
+const SCREEN_H = CANVAS.height;
+
+// Paddle
+const PADDLE_WIDTH = 80;
+const PADDLE_HEIGHT = 20;
+const PADDLE_X = SCREEN_W - PADDLE_WIDTH;
+
+// Ball
+const BALL_SIZE = 15;
+let ballX, ballY, ballDX, ballDY;
+
+// Score
+let score = 0;
+
+// Game state
+let gameRunning = true;
+let gameOver = false;
+
+// ---------- Input Handling ----------
+const keys = {}; window.addEventListener('keydown', e => keys[e.code] = true);
+window.addEventListener('keyup', e => keys[e.code] = false);
+
+// ---------- Initialization ----------
+function resetGame() {
+  score = 0;
+  ballX = PADDLE_X;
+  ballY = SCREEN_H - BALL_SIZE * 2;
+  ballDX = Math.random() > 0.5 ? 3 : -3;
+  ballDY = 0;
+  gameRunning = true;
+  document.getElementById('score').textContent = `Score: ${score}`;
+  document.getElementById('restartBtn').style.display = 'none';
+}
+
+// ---------- Game Loop ----------
+function gameLoop() {
+  if (!gameRunning) return;
+
+  // Clear canvas
+  ctx.clearRect(0, 0, SCREEN_W, SCREEN_H);
+
+  // Paddle drawing
+  ctx.fillStyle = '#3498db';
+  ctx.fillRect(PADDLE_X, SCREEN_H - PADDLE_HEIGHT - 5, PADDLE_WIDTH, PADDLE_HEIGHT);
+
+  // Ball drawing
+  ctx.fillStyle = '#e74c3c';
+  ctx.beginPath();
+  ctx.arc(ballX, ballY, BALL_SIZE, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Paddle movement
+  if (keys['ArrowLeft'] || keys['KeyA']) {
+    PADDLE_X -= 5;
+    if (PADDLE_X < 0) PADDLE_X = 0;
+  }
+  if (keys['ArrowRight'] || keys['KeyD']) {
+    PADDLE_X += 5;
+    if (PADDLE_X > SCREEN_W - PADDLE_WIDTH) PADDLE_X = SCREEN_W - PADDLE_WIDTH;
+  }
+
+  // Paddle ↔ Ball collision
+  if (ballX >= PADDLE_X && ballX + BALL_SIZE <= PADDLE_WIDTH && ballY + BALL_SIZE <= SCREEN_H - BALL_SIZE) {
+    ballDY = -5;
+  }
+
+  // Ball wall collisions
+  if (ballX + BALL_SIZE === SCREEN_W) ballDX = -ballDX;
+  if (ballX > 0) ballDX = -ballDX;
+  if (ballY + BALL_SIZE === SCREEN_H - BALL_SIZE) {
+    ballDY = -ballDY;
+    ballY = SCREEN_H - BALL_SIZE;
+  }
+
+  // Top wall collision (game over)
+  if (ballY <= 0) {
+    gameOver = true;
+    resetGame();
+    return;
+  }
+
+  // Random direction and reset
+  ballDX = Math.random() > 0.5 ? 3 : -3;
+  ballDY = 0;
+  ballX = PADDLE_X + PADDLE_WIDTH / 2;
+  ballY = SCREEN_H - BALL_SIZE;
+
+  // Scoring
+  if (ballY < 0) {
+    score += 10;
+    document.getElementById('score').textContent = `Score: ${score}`;
+    // Reset ball position
+    ballX = PADDLE_X + PADDLE_WIDTH / 2;
+    ballY = SCREEN_H - BALL_SIZE;
+    ballDY = -5;
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+// ---------- UI ----------
+const restartBtn = document.getElementById('restartBtn');
+restartBtn.addEventListener('click', resetGame);
+
+// Start loop
+gameLoop();
+</script>
+</body>
+</html>

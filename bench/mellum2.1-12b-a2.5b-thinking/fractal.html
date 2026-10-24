@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mandelbrot & Julia Sets</title>
+<style>
+  body {font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;margin:20px;}
+  h2 {margin-top:30px;}
+  canvas {border:1px solid #555;display:block;margin-bottom:10px;}
+  .controls {margin-top:10px;}
+  .mandelbrot, .julia {margin-bottom:30px;}
+</style>
+</head>
+<body>
+<h1>Mandelbrot and Julia Sets</h1>
+
+<div class="mandelbrot">
+  <h2>Mandelbrot Set</h2>
+  <canvas id="mandelbrotCanvas" width="400" height="400"></canvas>
+</div>
+
+<div class="julia">
+  <h2>Julia Set</h2>
+  <canvas id="juliaCanvas" width="400" height="400"></canvas>
+  <div class="controls">
+    <label>Real: <input type="range" id="juliaCr" min="-1.5" max="1.5" step="0.01" value="-0.4"></label><br>
+    <label>Imag: <input type="range" id="juliaCi" min="-1.5" max="1.5" step="0.01" value="0"></label>
+  </div>
+</div>
+
+<script>
+// ---------- Configuration ----------
+const MAX_ITER = 200;
+
+// ---------- View state ----------
+let mandelbrotView = {xMin: -2.0, xMax: 1.0, yMin: -1.5, yMax: 1.5};
+let juliaView    = {xMin: -2.0, xMax: 1.0, yMin: -1.5, yMax: 1.5};
+let juliaCr = -0.4, juliaCi = 0;
+
+// ---------- Helper: HSV → RGB ----------
+function hsvToRgb(h, s = 1, v = 1) {
+  const i = Math.floor(h * 6);
+  const f = h * 6 - i;
+  const p = v * (1 - s);
+  const q = v * (1 - s * f);
+  const t = v * (1 - s * (1 - f));
+  switch (i % 6) {
+    case 0: return [v, t, p];
+    case 1: return [q, v, p];
+    case 2: return [p, v, t];
+    case 3: return [p, q, v];
+    case 4: return [t, p, v];
+    case 5: return [v, p, q];
+  }
+  return [0,0,0];
+}
+
+// ---------- Color function ----------
+function getColor(iter) {
+  if (iter === MAX_ITER) return [0, 0, 0]; // inside set – black
+  const hue = iter / MAX_ITER; // 0‑1
+  const [r, g, b] = hsvToRgb(hue);
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+// ---------- Zoom adjustment ----------
+function adjustView(view, factor) {
+  const cx = (view.xMin + view.xMax) / 2;
+  const cy = (view.yMin + view.yMax) / 2;
+  const w = view.xMax - view.xMin;
+  const h = view.yMax - view.yMin;
+  view.xMin = cx - w * factor / 2;
+  view.xMax = cx + w * factor / 2;
+  view.yMin = cy - h * factor / 2;
+  view.yMax = cy + h * factor / 2;
+}
+
+// ---------- Drawing functions ----------
+function drawMandelbrot(canvas, view) {
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width, height = canvas.height;
+  const imageData = ctx.createImageData(width, height);
+  const data = imageData.data;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const cx = view.xMin + (x / width) * (view.xMax - view.xMin);
+      const cy = view.yMin + (y / height) * (view.yMax - view.yMin);
+
+      let zx = 0, zy = 0;
+      let iter = 0;
+      while (iter < MAX_ITER) {
+        const zx2 = zx * zx, zy2 = zy * zy;
+        const tmp = zx2 + zy2;
+        if (tmp > 4) break;
+        zy = 2 * zx * zy + cy;
+        zx = zx2 - zy2 + cx;
+        iter++;
+      }
+      const [r, g, b] = getColor(iter);
+      const idx = (y * width + x) * 4;
+      data[idx] = r;
+      data[idx + 1] = g;
+      data[idx + 2] = b;
+      data[idx + 3] = 255;
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+}
+
+function drawJulia(canvas, view, cr, ci) {
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width, height = canvas.height;
+  const imageData = ctx.createImageData(width, height);
+  const data = imageData.data;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const cx = view.xMin + (x / width) * (view.xMax - view.xMin);
+      const cy = view.yMin + (y / height) * (view.yMax - view.yMin);
+
+      let zx = cx, zy = cy;
+      let iter = 0;
+      while (iter < MAX_ITER) {
+        const zx2 = zx * zx, zy2 = zy * zy;
+        const tmp = zx2 + zy2;
+        if (tmp > 4) break;
+        zy = 2 * zx * zy + ci;
+        zx = zx2 - zy2 + cr;
+        iter++;
+      }
+      const [r, g, b] = getColor(iter);
+      const idx = (y * width + x) * 4;
+      data[idx] = r;
+      data[idx + 1] = g;
+      data[idx + 2] = b;
+      data[idx + 3] = 255;
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+}
+
+// ---------- Event listeners ----------
+const mandCanvas = document.getElementById('mandelbrotCanvas');
+mandCanvas.addEventListener('wheel', function(e) {
+  e.preventDefault();
+  const factor = e.deltaY > 0 ? 0.9 : 1.1; // zoom out / in
+  adjustView(mandelbrotView, factor);
+  drawMandelbrot(mandCanvas, mandelbrotView);
+});
+
+const juliaCanvas = document.getElementById('juliaCanvas');
+juliaCanvas.addEventListener('wheel', function(e) {
+  e.preventDefault();
+  const factor = e.deltaY > 0 ? 0.9 : 1.1;
+  adjustView(juliaView, factor);
+  drawJulia(juliaCanvas, juliaView, juliaCr, juliaCi);
+});
+
+document.getElementById('juliaCr').addEventListener('input', function() {
+  juliaCr = parseFloat(this.value);
+  drawJulia(juliaCanvas, juliaView, juliaCr, juliaCi);
+});
+
+document.getElementById('juliaCi').addEventListener('input', function() {
+  juliaCi = parseFloat(this.value);
+  drawJulia(juliaCanvas, juliaView, juliaCr, juliaCi);
+});
+
+// ---------- Initial draw ----------
+drawMandelbrot(mandCanvas, mandelbrotView);
+drawJulia(juliaCanvas, juliaView, juliaCr, juliaCi);
+</script>
+</body>
+</html>

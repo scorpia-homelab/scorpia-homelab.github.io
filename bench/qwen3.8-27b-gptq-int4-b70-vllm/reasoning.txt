@@ -1,0 +1,6 @@
+We need answer simple riddle. Need final with brief reasoning and final number. User: "A farmer has 17 sheep. All but 9 die. How many sheep are left? Show your reasoning briefly, then state the final number." Need answer 9. Reasoning: "all but 9" means 9 remain alive. Could mention total 17, 8 die, 9 left. Final number 9.
+
+
+“All but 9 die” means 9 sheep survive.
+
+Final number: **9**

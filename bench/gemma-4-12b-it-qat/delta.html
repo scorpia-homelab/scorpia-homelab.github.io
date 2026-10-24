@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEON DELTA - Retro Space Shooter</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #game-container {
+            position: relative;
+            border: 4px solid #333;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+        }
+
+        canvas {
+            display: block;
+            background: #000;
+            image-rendering: pixelated;
+        }
+
+        /* CRT Scanline Effect */
+        #game-container::after {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%, 
+                rgba(0, 0, 0, 0.25) 50%
+            ), linear-gradient(
+                90deg, 
+                rgba(255, 0, 0, 0.06), 
+                rgba(0, 255, 0, 0.02), 
+                rgba(0, 0, 255, 0.06)
+            );
+            background-size: 100% 4px, 3px 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 20px;
+            text-shadow: 2px 2px #000;
+            pointer-events: none;
+            z-index: 20;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 30;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border: 2px solid #0ff;
+        }
+
+        button {
+            background: #0ff;
+            border: none;
+            padding: 10px 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background: #f0f;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="ui">SCORE: <span id="score">0</span></div>
+        <div id="overlay">
+            <h1 style="color: #0ff; margin: 0;">NEON DELTA</h1>
+            <p>USE ARROWS / WASD TO MOVE<br>SPACE TO FIRE</p>
+            <button onclick="startGame()">START MISSION</button>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+<script>
+    /** @type {HTMLCanvasElement} */
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreElement = document.getElementById('score');
+    const overlay = document.getElementById('overlay');
+
+    // Game Constants
+    const WIDTH = 600;
+    const HEIGHT = 800;
+    canvas.width = WIDTH;
+    canvas.height = HEIGHT;
+
+    const COLORS = {
+        ship: '#0ff',      // Cyan
+        enemy: '#f0f',     // Magenta
+        bullet: '#fff',    // White
+        bg: '#000',
+        star: '#fff'
+    };
+
+    // Game State
+    let score = 0;
+    let gameRunning = false;
+    let enemies = [];
+    let bullets = [];
+    let stars = [];
+    let keys = {};
+
+    // Player Object
+    const player = {
+        x: WIDTH / 2,
+        y: HEIGHT - 100,
+        w: 30,
+        h: 30,
+        speed: 5,
+        cooldown: 0
+    };
+
+    // Initialize Stars (Parallax)
+    for (let i = 0; i < 100; i++) {
+        stars.push({
+            x: Math.random() * WIDTH,
+            y: Math.random() * HEIGHT,
+            size: Math.random() * 2,
+            speed: Math.random() * 3 + 1
+        });
+    }
+
+    // Input Listeners
+    window.addEventListener('keydown', e => keys[e.code] = true);
+    window.addEventListener('keyup', e => keys[e.code] = false);
+
+    function startGame() {
+        score = 0;
+        scoreElement.innerText = score;
+        enemies = [];
+        bullets = [];
+        player.x = WIDTH / 2;
+        player.y = HEIGHT - 100;
+        gameRunning = true;
+        overlay.style.display = 'none';
+        animate();
+    }
+
+    function gameOver() {
+        gameRunning = false;
+        overlay.style.display = 'block';
+        overlay.innerHTML = `<h1 style="color: #f0f; margin: 0;">GAME OVER</h1><p>SCORE: ${score}</p><button onclick="startGame()">RETRY</button>`;
+    }
+
+    function spawnEnemy() {
+        if (Math.random() < 0.03) {
+            const size = 30;
+            enemies.push({
+                x: WIDTH + 50,
+                y: Math.random() * (HEIGHT - 200),
+                w: size,
+                h: size,
+                speed: 3 + (score / 1000),
+                sin: Math.random() * Math.PI * 2,
+                sinSpeed: 0.05 + Math.random() * 0.1
+            });
+        }
+    }
+
+    function update() {
+        if (!gameRunning) return;
+
+        // Player Movement
+        if ((keys['ArrowUp'] || keys['KeyW']) && player.y > 0) player.y -= player.speed;
+        if ((keys['ArrowDown'] || keys['KeyS']) && player.y < HEIGHT - player.h) player.y += player.speed;
+        if ((keys['ArrowLeft'] || keys['KeyA']) && player.x > 0) player.x -= player.speed;
+        if ((keys['ArrowRight'] || keys['KeyD']) && player.x < WIDTH - player.w) player.x += player.speed;
+
+        // Shooting
+        if (keys['Space'] && player.cooldown <= 0) {
+            bullets.push({ x: player.x + player.w / 2 - 2, y: player.y, w: 4, h: 12 });
+            player.cooldown = 15;
+        }
+        if (player.cooldown > 0) player.cooldown--;
+
+        // Update Bullets
+        bullets.forEach((b, index) => {
+            b.y -= 8;
+            if (b.y < 0) bullets.splice(index, 1);
+        });
+
+        // Update Enemies
+        spawnEnemy();
+        enemies.forEach((e, eIdx) => {
+            // Movement logic: Move left + Sine wave (Delta style)
+            e.x -= e.speed;
+            e.y += Math.sin(e.sin) * 2;
+            e.sin += e.sinSpeed;
+
+            // Collision: Bullet hits Enemy
+            bullets.forEach((b, bIdx) => {
+                if (b.x < e.x + e.w && b.x + b.w > e.x && b.y < e.y + e.h && b.y + b.h > e.y) {
+                    enemies.splice(eIdx, 1);
+                    bullets.splice(bIdx, 1);
+                    score += 10;
+                    scoreElement.innerText = score;
+                }
+            });
+
+            // Collision: Enemy hits Player
+            if (player.x < e.x + e.w && player.x + player.w > e.x && player.y < e.y + e.h && player.y + player.h > e.y) {
+                gameOver();
+            }
+
+            // Remove off-screen
+            if (e.x < -50) enemies.splice(eIdx, 1);
+        });
+
+        // Update Stars (Parallax)
+        stars.forEach(s => {
+            s.x -= s.speed;
+            if (s.x < 0) s.x = WIDTH;
+        });
+    }
+
+    function draw() {
+        // Clear Screen
+        ctx.fillStyle = COLORS.bg;
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+        // Draw Stars
+        ctx.fillStyle = COLORS.star;
+        stars.forEach(s => {
+            ctx.fillRect(s.x, s.y, s.size, s.size);
+        });
+
+        // Draw Bullets
+        ctx.fillStyle = COLORS.bullet;
+        bullets.forEach(b => {
+            ctx.fillRect(b.x, b.y, b.w, b.h);
+        });
+
+        // Draw Enemies
+        ctx.fillStyle = COLORS.enemy;
+        enemies.forEach(e => {
+            // Draw a diamond shape for retro feel
+            ctx.beginPath();
+            ctx.moveTo(e.x + e.w/2, e.y);
+            ctx.lineTo(e.x + e.w, e.y + e.h/2);
+            ctx.lineTo(e.x + e.w/2, e.y + e.h);
+            ctx.lineTo(e.x, e.y + e.h/2);
+            ctx.closePath();
+            ctx.fill();
+        });
+
+        // Draw Player (Triangle Ship)
+        ctx.fillStyle = COLORS.ship;
+        ctx.beginPath();
+        ctx.moveTo(player.x + player.w / 2, player.y);
+        ctx.lineTo(player.x + player.w, player.y + player.h);
+        ctx.lineTo(player.x, player.y + player.h);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Engine glow
+        ctx.fillStyle = '#f0f';
+        ctx.fillRect(player.x + player.w/4, player.y + player.h, player.w/2, 4);
+    }
+
+    function animate() {
+        if (!gameRunning) return;
+        update();
+        draw();
+        requestAnimationFrame(animate);
+    }
+
+    // Initial Draw
+    draw();
+</script>
+</body>
+</html>
+```
+
+### Key Features Included:
+1.  **Delta-Inspired Movement:** Enemies don't just move linearly; they use a `Math.sin` function to create a "wavy" horizontal path, mimicking the organic movement of the original C64 game.
+2.  **Retro Visuals:** 
+    *   **Scanlines:** A CSS overlay creates the classic CRT look.
+    *   **Color Palette:** Uses high-contrast Cyan and Magenta.
+    *   **Pixelated Rendering:** The canvas uses `image-rendering: pixelated` to keep shapes sharp.
+3.  **Parallax Background:** A starfield moves at different speeds to create a sense of depth in space.
+4.  **Responsive Controls:** Supports both Arrow keys and WASD for movement, with Spacebar for firing.
+5.  **Self-Contained:** No external images or libraries are required; everything is drawn procedurally via JavaScript.

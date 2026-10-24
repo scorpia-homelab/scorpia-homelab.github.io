@@ -1,0 +1,22 @@
+{
+  "reasoning": 9,
+  "creative": 7,
+  "constraints": 10,
+  "fib": 5,
+  "json": 5,
+  "breakout": 10,
+  "delta": 10,
+  "fractal": 10,
+  "_notes": {
+    "method": "headless play-test (playtest.py) + static diagnosis (game_diag.py) + manual output review",
+    "SERVER CAVEAT": "this vLLM server does not separate thinking from content, so the model's planning text leaked into the visible answer on every test. Scores judge the final answer where it is separable, and penalise where the leak itself broke the deliverable (fib/json).",
+    "reasoning": "riddle correct (9), clear final answer; planning preamble leaked but separable",
+    "constraints": "final answer is exactly 3 sentences and on-theme; the harness counted 15 because the leaked planning preamble was counted too",
+    "fib": "code itself correct — extracted and executed: fib(50)=12586269025 in 4 microseconds — but 'output only the code' was violated by the planning leak, so the harness could not execute the raw output",
+    "json": "valid JSON object present at the end, but response is not pure JSON (planning preamble) — harness validation failed",
+    "creative": "complete ~100-word story with a real twist ('someone had painted the sky'), readable; planning/draft text leaked ahead of the story",
+    "breakout": "model wrote an outline doc then the full doc; final doc play-tested: paints, animates, responds to input, 0 JS errors",
+    "delta": "final doc play-tested: 2 canvases, paints, animates, responds, 0 JS errors",
+    "fractal": "final doc play-tested: 3 canvases, paints, animates, responds, 0 JS errors"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "breakout":  9,
+  "delta":     8,
+  "fractal":   9,
+  "fib":       10,
+  "reasoning": 9,
+  "constraints": 10,
+  "json":      10,
+  "creative":  9
+}

@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas Breakout Arcade</title>
+    <style>
+        /* Basic CSS to make the game fill the viewport and center the canvas */
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #222;
+            font-family: sans-serif;
+            color: #fff;
+            user-select: none; /* Prevent text selection */
+        }
+        canvas {
+            border: 5px solid #444;
+            background-color: #000;
+            display: block;
+        }
+        #game-info {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            font-size: 20px;
+            text-shadow: 2px 2px 4px #000;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-info">Score: 0 | Lives: 3</div>
+    <canvas id="breakoutCanvas"></canvas>
+
+    <script>
+        // --- CANVAS SETUP ---
+        const canvas = document.getElementById('breakoutCanvas');
+        const ctx = canvas.getContext('2d');
+        const infoDisplay = document.getElementById('game-info');
+
+        // Set canvas dimensions (standard arcade size)
+        canvas.width = 800;
+        canvas.height = 600;
+
+        // --- GAME OBJECTS ---
+        let score = 0;
+        let lives = 3;
+        let gameRunning = true;
+
+        // Paddle properties
+        const paddle = {
+            width: 120,
+            height: 15,
+            x: (canvas.width - 120) / 2,
+            y: canvas.height - 30,
+            color: '#00aaff',
+            dx: 0 // Movement delta (used for keyboard control)
+        };
+
+        // Ball properties
+        const ball = {
+            radius: 8,
+            x: canvas.width / 2,
+            y: canvas.height - 45,
+            dx: 5, // Initial horizontal speed
+            dy: -5, // Initial vertical speed (upwards)
+            color: '#ff4444'
+        };
+
+        // Brick properties
+        const brick = {
+            rowCount: 6,
+            columnCount: 8,
+            width: 75,
+            height: 20,
+            padding: 10,
+            offsetTop: 30,
+            offsetLeft: 30,
+            colors: ['#ff6666', '#ff9966', '#ffff66', '#66ff66', '#6666ff', '#ff66ff']
+        };
+
+        let bricks = [];
+
+        // --- INITIALIZATION ---
+
+        /**
+         * Creates the brick grid array.
+         */
+        function createBricks() {
+            bricks = [];
+            for (let row = 0; row < brick.rowCount; row++) {
+                bricks[row] = [];
+                for (let col = 0; col < brick.columnCount; col++) {
+                    // Store brick state: { x, y, status (1=alive, 0=dead) }
+                    bricks[row][col] = {
+                        x: col * (brick.width + brick.padding) + brick.offsetLeft,
+                        y: row * (brick.height + brick.padding) + brick.offsetTop,
+                        status: 1,
+                        color: brick.colors[row % brick.colors.length]
+                    };
+                }
+            }
+        }
+
+        // --- DRAWING FUNCTIONS ---
+
+        /**
+         * Draws a filled rectangle on the canvas.
+         * @param {number} x - X coordinate.
+         * @param {number} y - Y coordinate.
+         * @param {number} w - Width.
+         * @param {number} h - Height.
+         * @param {string} color - Fill color.
+         */
+        function drawRect(x, y, w, h, color) {
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, w, h);
+        }
+
+        /**
+         * Draws the ball.
+         */
+        function drawBall() {
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = ball.color;
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        /**
+         * Draws the paddle.
+         */
+        function drawPaddle() {
+            drawRect(paddle.x, paddle.y, paddle.width, paddle.height, paddle.color);
+        }
+
+        /**
+         * Draws all the bricks.
+         */
+        function drawBricks() {
+            for (let row = 0; row < brick.rowCount; row++) {
+                for (let col = 0; col < brick.columnCount; col++) {
+                    const brickObj = bricks[row][col];
+                    if (brickObj.status === 1) {
+                        drawRect(brickObj.x, brickObj.y, brick.width, brick.height, brickObj.color);
+                    }
+                }
+            }
+        }
+
+        /**
+         * Clears the canvas before drawing the next frame.
+         */
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // --- PHYSICS AND COLLISION ---
+
+        /**
+         * Handles collision detection between the ball and the walls.
+         */
+        function checkWallCollision() {
+            // Left/Right walls
+            if (ball.x + ball.dx > canvas.width - ball.radius || ball.x + ball.dx < ball.radius) {
+                ball.dx = -ball.dx;
+            }
+            // Top wall
+            if (ball.y + ball.dy < ball.radius) {
+                ball.dy = -ball.dy;
+            }
+            // Bottom wall (Game Over condition)
+            if (ball.y + ball.dy > canvas.height - ball.radius) {
+                // Check if the ball hit the paddle first
+                if (ball.x - ball.radius < paddle.x + paddle.width &&
+                    ball.x + ball.radius > paddle.x &&
+                    ball.y + ball.radius > paddle.y &&
+                    ball.y - ball.radius < paddle.y + paddle.height) {
+                    
+                    // Collision with paddle
+                    ball.dy = -ball.dy;
+                    
+                    // Calculate bounce angle based on hit point (more advanced physics)
+                    let relativeIntersectX = (paddle.x + (paddle.width / 2)) - ball.x;
+                    let normalizedRelativeIntersectionX = relativeIntersectX / (paddle.width / 2);
+                    ball.dx = normalizedRelativeIntersectionX * 10; // Max horizontal speed
+                    ball.dy = -Math.sqrt(Math.pow(ball.dx * 2, 2) + Math.pow(10, 2)); // Maintain speed
+                } else {
+                    // Hit the floor
+                    lives--;
+                    if (lives === 0) {
+                        gameOver(false);
+                    } else {
+                        // Reset ball and paddle position
+                        resetBallAndPaddle();
+                    }
+                }
+            }
+        }
+
+        /**
+         * Handles collision detection between the ball and the bricks.
+         */
+        function checkBrickCollision() {
+            for (let row = 0; row < brick.rowCount; row++) {
+                for (let col = 0; col < brick.columnCount; col++) {
+                    const brickObj = bricks[row][col];
+                    if (brickObj.status === 1) {
+                        // Check if the ball is within the brick's bounds
+                        if (ball.x + ball.radius > brickObj.x &&
+                            ball.x - ball.radius < brickObj.x + brick.width &&
+                            ball.y + ball.radius > brickObj.y &&
+                            ball.y - ball.radius < brickObj.y + brick.height) {
+                            
+                            // Collision detected!
+                            brickObj.status = 0; // Destroy the brick
+                            score += 10;
+
+                            // Simple bounce physics (reverse vertical direction)
+                            ball.dy = -ball.dy;
+                            
+                            // Break the loop to prevent multiple hits in one frame
+                            return; 
+                        }
+                    }
+                }
+            }
+        }
+
+        /**
+         * Updates the position of the ball and paddle.
+         */
+        function update() {
+            if (!gameRunning) return;
+
+            // 1. Update Ball Position
+            ball.x += ball.dx;
+            ball.y += ball.dy;
+
+            // 2. Update Paddle Position
+            paddle.x += paddle.dx;
+
+            // Keep paddle within bounds
+            if (paddle.x < 0) {
+                paddle.x = 0;
+            } else if (paddle.x + paddle.width > canvas.width) {
+                paddle.x = canvas.width - paddle.width;
+            }
+
+            // 3. Check Collisions
+            checkWallCollision();
+            checkBrickCollision();
+
+            // 4. Update Scoreboard
+            infoDisplay.innerHTML = `Score: ${score} | Lives: ${lives}`;
+
+            // 5. Check Win Condition
+            if (bricks.every(row => row.every(brick => brick.status === 0))) {
+                gameOver(true);
+            }
+        }
+
+        /**
+         * Main game loop function.
+         */
+        function loop() {
+            if (!gameRunning) return;
+
+            clearCanvas();
+            
+            // Draw all elements
+            drawBricks();
+            drawPaddle();
+            drawBall();
+
+            // Update physics and check collisions
+            update();
+
+            // Request the next frame
+            requestAnimationFrame(loop);
+        }
+
+        // --- GAME STATE MANAGEMENT ---
+
+        /**
+         * Resets the ball and paddle to their starting positions.
+         */
+        function resetBallAndPaddle() {
+            ball.x = canvas.width / 2;
+            ball.y = canvas.height - 45;
+            ball.dx = 5;
+            ball.dy = -5;
+            
+            paddle.x = (canvas.width - paddle.width) / 2;
+        }
+
+        /**
+         * Ends the game and displays the result.
+         * @param {boolean} win - True if the player won, false otherwise.
+         */
+        function gameOver(win) {
+            gameRunning = false;
+            
+            if (win) {
+                alert(`🎉 YOU WIN! 🎉\n\nFinal Score: ${score}\n\nPress OK to restart.`);
+            } else {
+                alert(`GAME OVER! 💔\n\nYou ran out of lives.\n\nFinal Score: ${score}\n\nPress OK to restart.`);
+            }
+            
+            // Reset game state for restart
+            score = 0;
+            lives = 3;
+            createBricks();
+            resetBallAndPaddle();
+            
+            // Restart the loop
+            loop();
+        }
+
+        // --- INPUT HANDLING ---
+
+        document.addEventListener("mousemove", (e) => {
+            if (!gameRunning) return;
+            // Calculate mouse position relative to the canvas
+            const relativeX = e.clientX - canvas.getBoundingClientRect().left;
+            
+            // Move the paddle smoothly towards the mouse X position
+            paddle.x = relativeX - paddle.width / 2;
+        });
+
+        // Optional: Keyboard fallback (for testing or preference)
+        document.addEventListener("keydown", (e) => {
+            if (!gameRunning) return;
+            if (e.key === "ArrowLeft" || e.key.toLowerCase() === "a") {
+                paddle.dx = -10;
+            } else if (e.key === "ArrowRight" || e.key.toLowerCase() === "d") {
+                paddle.dx = 10;
+            }
+        });
+
+        document.addEventListener("keyup", (e) => {
+            if (!gameRunning) return;
+            if (e.key === "ArrowLeft" || e.key.toLowerCase() === "a" || e.key === "ArrowRight" || e.key.toLowerCase() === "d") {
+                paddle.dx = 0;
+            }
+        });
+
+
+        // --- START GAME ---
+        createBricks();
+        loop();
+
+    </script>
+</body>
+</html>
+```

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fractal Explorer: Mandelbrot & Julia</title>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: #eee;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 { margin-bottom: 10px; font-weight: 300; }
+        p { margin-bottom: 20px; color: #aaa; font-size: 0.9rem; }
+
+        .fractal-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .fractal-card {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            text-align: center;
+        }
+
+        canvas {
+            border: 1px solid #444;
+            background-color: #000;
+            cursor: crosshair;
+            image-rendering: pixelated; /* Keeps the fractal edges sharp */
+        }
+
+        .controls {
+            margin-top: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            text-align: left;
+            font-size: 0.8rem;
+        }
+
+        input[type=range] {
+            width: 100%;
+            cursor: pointer;
+        }
+
+        .label-group {
+            display: flex;
+            justify-content: space-between;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Fractal Explorer</h1>
+    <p>Mandelbrot (Static) vs. Julia (Interactive)</p>
+
+    <div class="fractal-container">
+        <!-- Mandelbrot Section -->
+        <div class="fractal-card">
+            <h3>Mandelbrot Set</h3>
+            <canvas id="mandelCanvas" width="400" height="400"></canvas>
+            <div class="controls">
+                <p>Formula: $z_{n+1} = z_n^2 + c$<br>where $z_0 = 0$</p>
+            </div>
+        </div>
+
+        <!-- Julia Section -->
+        <div class="fractal-card">
+            <h3>Julia Set</h3>
+            <canvas id="juliaCanvas" width="400" height="400"></canvas>
+            <div class="controls">
+                <div class="label-group">
+                    <label>Real Part (c.re):</label>
+                    <span id="reVal">-0.7</span>
+                </div>
+                <input type="range" id="reSlider" min="-1.5" max="1.5" step="0.01" value="-0.7">
+                
+                <div class="label-group">
+                    <label>Imaginary Part (c.im):</label>
+                    <span id="imVal">0.27</span>
+                </div>
+                <input type="range" id="imSlider" min="-1.5" max="1.5" step="0.01" value="0.27">
+                
+                <p>Formula: $z_{n+1} = z_n^2 + c$<br>where $c$ is constant</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const mCanvas = document.getElementById('mandelCanvas');
+        const jCanvas = document.getElementById('juliaCanvas');
+        const mCtx = mCanvas.getContext('2d');
+        const jCtx = jCanvas.getContext('2d');
+
+        const reSlider = document.getElementById('reSlider');
+        const imSlider = document.getElementById('imSlider');
+        const reVal = document.getElementById('reVal');
+        const imVal = document.getElementById('imVal');
+
+        const width = 400;
+        const height = 400;
+        const maxIter = 100;
+
+        // Pre-allocate image data for performance
+        const mImgData = mCtx.createImageData(width, height);
+        const jImgData = jCtx.createImageData(width, height);
+
+        /**
+         * Maps a pixel coordinate to the complex plane.
+         * Mandelbrot: x,y maps to c
+         * Julia: x,y maps to z0
+         */
+        function renderFractal(imgData, isMandelbrot, c_re, c_im) {
+            const data = imgData.data;
+
+            for (let x = 0; x < width; x++) {
+                for (let y = 0; y < height; y++) {
+                    
+                    // Map pixel to complex plane (-2.0 to 1.0 range)
+                    let zx, zy, cx, cy;
+
+                    if (isMandelbrot) {
+                        cx = (x - width / 2) * (3.0 / width);
+                        cy = (y - height / 2) * (3.0 / height);
+                        zx = 0;
+                        zy = 0;
+                    } else {
+                        // Julia uses the slider values as the constant 'c'
+                        cx = c_re;
+                        cy = c_im;
+                        // Julia uses the pixel position as the starting 'z'
+                        zx = (x - width / 2) * (3.0 / width);
+                        zy = (y - height / 2) * (3.0 / height);
+                    }
+
+                    let i = 0;
+                    let distSq = 0;
+
+                    // Main Fractal Loop
+                    while (zx * zx + zy * zy < 4 && i < maxIter) {
+                        let xtemp = zx * zx - zy * zy + cx;
+                        zy = 2 * zx * zy + cy;
+                        zx = xtemp;
+                        i++;
+                    }
+
+                    // Coloring logic
+                    const pixelIndex = (y * width + x) * 4;
+                    
+                    if (i === maxIter) {
+                        // Inside the set
+                        data[pixelIndex] = 0;
+                        data[pixelIndex + 1] = 0;
+                        data[pixelIndex + 2] = 0;
+                    } else {
+                        // Smooth coloring calculation
+                        // We use the iteration count and the final magnitude to create a smooth gradient
+                        const log_zn = Math.log(zx * zx + zy * zy) / 2;
+                        const nu = Math.log(log_zn / Math.log(2)) / Math.log(2);
+                        const smoothIter = i + 1 - nu;
+
+                        // Create a vibrant HSL-like color mapping
+                        const hue = (200 + smoothIter * 10) % 360;
+                        const saturation = 70;
+                        const lightness = 50;
+
+                        // Simple conversion from HSL to RGB (approximate for speed)
+                        const rgb = hslToRgb(hue / 360, saturation / 100, lightness / 100);
+                        data[pixelIndex] = rgb[0];
+                        data[pixelIndex + 1] = rgb[1];
+                        data[pixelIndex + 2] = rgb[2];
+                    }
+                    data[pixelIndex + 3] = 255; // Alpha
+                }
+            }
+            return imgData;
+        }
+
+        // Helper for smooth coloring
+        function hslToRgb(h, s, l) {
+            let r, g, b;
+            if (s === 0) {
+                r = g = b = l;
+            } else {
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+                r = hueToRgb(p, q, h + 1/3);
+                g = hueToRgb(p, q, h);
+                b = hueToRgb(p, q, h - 1/3);
+            }
+            return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+        }
+
+        function hueToRgb(p, q, t) {
+            if (t < 0) t += 1;
+            if (t > 1) t -= 1;
+            if (t < 1/6) return p + (q - p) * 6 * t;
+            if (t < 1/2) return q;
+            if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+            return p;
+        }
+
+        // Initial Render
+        function update() {
+            const c_re = parseFloat(reSlider.value);
+            const c_im = parseFloat(imSlider.value);
+            
+            reVal.innerText = c_re;
+            imVal.innerText = c_im;
+
+            const mData = renderFractal(mImgData, true, 0, 0);
+            mCtx.putImageData(mData, 0, 0);
+
+            const jData = renderFractal(jImgData, false, c_re, c_im);
+            jCtx.putImageData(jData, 0, 0);
+        }
+
+        // Listeners
+        reSlider.addEventListener('input', update);
+        imSlider.addEventListener('input', update);
+
+        // Run
+        update();
+    </script>
+</body>
+</html>
+```

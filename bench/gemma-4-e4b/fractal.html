@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandelbrot and Julia Sets Renderer</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e2e;
+            color: #e0e0e0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            color: #89b4fa;
+            margin-bottom: 30px;
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-around;
+            width: 90%;
+            max-width: 1200px;
+            gap: 20px;
+        }
+        .canvas-wrapper {
+            background-color: #282a36;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+        canvas {
+            display: block;
+            border: 1px solid #44475a;
+            background-color: #000;
+            cursor: crosshair;
+        }
+        .controls {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #282a36;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 1200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        label {
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        input[type="range"] {
+            width: 200px;
+            margin-right: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #89b4fa;
+            color: #282a36;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #6e9efc;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Fractal Set Renderer: Mandelbrot & Julia</h1>
+
+    <div class="container">
+        
+        <!-- Mandelbrot Canvas -->
+        <div class="canvas-wrapper">
+            <h2>Mandelbrot Set</h2>
+            <canvas id="mandelbrotCanvas" width="800" height="800"></canvas>
+        </div>
+
+        <!-- Julia Canvas -->
+        <div class="canvas-wrapper">
+            <h2>Julia Set</h2>
+            <canvas id="juliaCanvas" width="800" height="800"></canvas>
+        </div>
+    </div>
+
+    <div class="controls">
+        <p>Adjust the Julia parameter $k$ (Real part) and re-render the Julia set.</p>
+        <label for="juliaKReal">Julia K Real (Re(k)):</label>
+        <input type="range" id="juliaKReal" min="-1.5" max="1.5" step="0.01" value="-0.7">
+        <span id="juliaKRealValue"></span>
+        <button onclick="renderJuliaSet()">Re-render Julia Set</button>
+    </div>
+
+    <script>
+        // --- Configuration Constants ---
+        const WIDTH = 800;
+        const HEIGHT = 800;
+        const MAX_ITER = 100;
+
+        // --- Color Mapping Function ---
+        // Maps iteration count (n) to an RGB color array [r, g, b]
+        function getColor(n, maxIter) {
+            if (n === maxIter) {
+                // Inside the set (Black)
+                return [0, 0, 0];
+            }
+            
+            // Smooth coloring based on escape time
+            const hue = (n * 360 / maxIter) % 360;
+            const saturation = 100;
+            const lightness = (n / maxIter) * 50 + 50; // Keep it visible
+            
+            // Simple HSL to RGB approximation for a vibrant palette
+            let r = Math.floor(Math.sin(0).normalize() * 255);
+            let g = Math.floor(Math.sin(0 + 2 * Math.PI / 3).normalize() * 255);
+            let b = Math.floor(Math.sin(0 + 4 * Math.PI / 3).normalize() * 255);
+
+            // Using a fixed, visible palette instead of complex HSL math for simplicity
+            const r_val = (n * 10 % 255);
+            const g_val = (n * 20 % 255);
+            const b_val = (n * 30 % 255);
+
+            return [r_val, g_val, b_val];
+        }
+
+        /**
+         * Renders the Mandelbrot set.
+         * Formula: z(n+1) = z(n)^2 + c
+         * z_0 = 0, c = point on the plane
+         */
+        function drawMandelbrot(canvasId, width, height, maxIter, xMin, xMax, yMin, yMax) {
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d');
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const data = imageData.data;
+
+            console.log("Rendering Mandelbrot set...");
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    // Map pixel coordinates (x, y) to complex plane coordinates (c_re, c_im)
+                    const c_re = xMin + (x / width) * (xMax - xMin);
+                    const c_im = yMin + (y / height) * (yMax - yMin);
+
+                    // z = z_re + i * z_im
+                    let z_re = 0.0;
+                    let z_im = 0.0;
+                    let n = 0;
+
+                    // Mandelbrot iteration loop
+                    while (z_re * z_re + z_im * z_im <= 4 && n < maxIter) {
+                        // z_next = z^2 + c
+                        // z_next_re = z_re^2 - z_im^2 + c_re
+                        // z_next_im = 2 * z_re * z_im + c_im
+                        
+                        const z_re_sq = z_re * z_re;
+                        const z_im_sq = z_im * z_im;
+
+                        z_re = z_re_sq - z_im_sq + c_re;
+                        z_im = 2 * z_re * z_im + c_im; // Note: z_re here is the *new* z_re, but we need the old one for the calculation.
+                        
+                        // Correct calculation for z_im:
+                        z_im = 2 * z_re * z_im + c_im; // Re-calculating z_re and z_im correctly for the next step
+                        
+                        // Re-doing the loop body for clarity and correctness:
+                        let next_z_re = z_re * z_re - z_im * z_im + c_re;
+                        let next_z_im = 2 * z_re * z_im + c_im;
+                        
+                        z_re = next_z_re;
+                        z_im = next_z_im;
+                        
+                        n++;
+                    }
+
+                    // Calculate color
+                    const [r, g, b] = getColor(n, maxIter);
+
+                    // Set pixel data (index = (y * width + x) * 4)
+                    const index = (y * width + x) * 4;
+                    data[index] = r;     // Red
+                    data[index + 1] = g; // Green
+                    data[index + 2] = b; // Blue
+                    data[index + 3] = 255; // Alpha (Opaque)
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+            console.log("Mandelbrot rendering complete.");
+        }
+
+        /**
+         * Renders the Julia set.
+         * Formula: z(n+1) = z(n)^2 + k
+         * z_0 = point on the plane, k = fixed parameter
+         */
+        function drawJulia(canvasId, width, height, maxIter, xMin, xMax, yMin, yMax, k_re, k_im) {
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d');
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const data = imageData.data;
+
+            console.log(`Rendering Julia set (k=${k_re}, ${k_im})...`);
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    // Map pixel coordinates (x, y) to initial complex point z_0 (z_re, z_im)
+                    let z_re = xMin + (x / width) * (xMax - xMin);
+                    let z_im = yMin + (y / height) * (yMax - yMin);
+                    
+                    let n = 0;
+
+                    // Julia iteration loop
+                    while (z_re * z_re + z_im * z_im <= 4 && n < maxIter) {
+                        // z_next = z^2 + k
+                        
+                        // z_next_re = z_re^2 - z_im^2 + k_re
+                        // z_next_im = 2 * z_re * z_im + k_im
+                        
+                        const z_re_sq = z_re * z_re;
+                        const z_im_sq = z_im * z_im;
+
+                        let next_z_re = z_re_sq - z_im_sq + k_re;
+                        let next_z_im = 2 * z_re * z_im + k_im;
+                        
+                        z_re = next_z_re;
+                        z_im = next_z_im;
+                        
+                        n++;
+                    }
+
+                    // Calculate color
+                    const [r, g, b] = getColor(n, maxIter);
+
+                    // Set pixel data
+                    const index = (y * width + x) * 4;
+                    data[index] = r;     // Red
+                    data[index + 1] = g; // Green
+                    data[index + 2] = b; // Blue
+                    data[index + 3] = 255; // Alpha
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+            console.log("Julia rendering complete.");
+        }
+
+        // --- Initialization and Event Handlers ---
+
+        function initialize() {
+            // 1. Render Mandelbrot (Fixed View)
+            // Standard view: [-2.5, 1.5] x [-1.2, 1.2]
+            drawMandelbrot('mandelbrotCanvas', WIDTH, HEIGHT, MAX_ITER, -2.5, 1.5, -1.2, 1.2);
+
+            // 2. Render initial Julia set (Default k)
+            renderJuliaSet();
+        }
+
+        function renderJuliaSet() {
+            const kRealInput = document.getElementById('juliaKReal');
+            const kReal = parseFloat(kRealInput.value);
+            
+            // Read the imaginary part of k (fixed for this demo)
+            const kImag = 0.27015; 
+
+            // Update display value
+            document.getElementById('juliaKRealValue').textContent = `(${kReal.toFixed(2)}, ${kImag.toFixed(5)})`;
+
+            // Julia set view parameters: [-2.0, 2.0] x [-2.0, 2.0]
+            drawJulia('juliaCanvas', WIDTH, HEIGHT, MAX_ITER, -2.0, 2.0, -2.0, 2.0, kReal, kImag);
+        }
+
+        // Attach event listener to the slider
+        document.getElementById('juliaKReal').addEventListener('input', function() {
+            document.getElementById('juliaKRealValue').textContent = `(${parseFloat(this.value).toFixed(2)}, 0.27015)`;
+        });
+
+        // Run the initialization when the page loads
+        window.onload = initialize;
+
+    </script>
+</body>
+</html>

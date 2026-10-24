@@ -1,0 +1,6 @@
+
+The phrase “all but 9 die” means that 9 sheep do **not** die, i.e., they survive. Starting with 17 sheep and subtracting the 9 that die leaves 17 − 9 = 8, but the wording indicates that the 9 who are not mentioned are the ones that remain. Hence, 9 sheep are left.
+
+\[
+\boxed{9}
+\]

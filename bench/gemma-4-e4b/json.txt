@@ -1,0 +1,1 @@
+{"name": "Elara Vance", "age": 31, "hobbies": ["hiking", "baking", "reading"]}

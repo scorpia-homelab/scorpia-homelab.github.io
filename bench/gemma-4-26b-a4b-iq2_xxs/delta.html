@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport de="width=device-width, initial-scale=1.0">
+    <title>DELTA RETRO - Space Shooter</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050505;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        #game-container {
+            position: relative;
+            border: 4px solid #444;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+        }
+
+        canvas {
+            display: block;
+            image-rendering: pixelated; /* Keeps pixels sharp */
+            background-color: #000;
+        }
+
+        #ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            color: #0ff;
+            text-shadow: 2px 2px #000;
+            font-weight: bold;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .menu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            pointer-events: auto;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border: 2px solid #0ff;
+        }
+
+        button {
+            background: #0ff;
+            border: none;
+            padding: 10px 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background: #fff;
+        }
+
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="640" height="360"></canvas>
+    <div id="ui-overlay">
+        <div id="score-board">SCORE: 0</div>
+        
+        <!-- Start Menu -->
+        <div id="start-menu" class="menu">
+            <h1 style="color: #0ff; margin: 0;">DELTA RETRO</h1>
+            <p>USE ARROWS TO MOVE<br>SPACE TO SHOOT</p>
+            <button onclick="startGame()">START MISSION</button>
+        </div>
+
+        <!-- Game Over Menu -->
+        <div id="game-over-menu" class="menu hidden">
+            <h1 style="color: #f00; margin: 0;">MISSION FAILED</h1>
+            <p id="final-score">SCORE: 0</p>
+            <button onclick="startGame()">RETRY</button>
+        </div>
+    </div>
+</div>
+
+<script>
+/**
+ * DELTA RETRO - Game Logic
+ * A procedural pixel-art space shooter
+ */
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreBoard = document.getElementById('score-board');
+const startMenu = document.getElementById('start-menu');
+const gameOverMenu = document.getElementById('game-over-menu');
+const finalScoreText = document.getElementById('final-score');
+
+// Game State
+let gameState = 'MENU';
+let score = 0;
+let frameCount = 0;
+
+// Input Handling
+const keys = {};
+window.addEventListener('keydown', e => keys[e.code] = true);
+window.addEventListener('keyup', e => keys[e.code] = false);
+
+// Configuration
+const CONFIG = {
+    playerSpeed: 4,
+    bulletSpeed: 7,
+    enemySpawnRate: 60, // frames
+    maxEnemies: 10
+};
+
+// Entities
+let player;
+let bullets = [];
+let enemies = [];
+let particles = [];
+let stars = [];
+
+class Player {
+    constructor() {
+        this.width = 24;
+        this.height = 16;
+        this.x = 50;
+        this.y = canvas.height / 2;
+        this.color = '#0ff';
+    }
+
+    update() {
+        if (keys['ArrowUp'] && this.y > 0) this.y -= CONFIG.playerSpeed;
+        if (keys['ArrowDown'] && this.y < canvas.height - this.height) this.y += CONFIG.playerSpeed;
+        if (keys['ArrowLeft'] && this.x > 0) this.x -= CONFIG.playerSpeed;
+        if (keys['ArrowRight'] && this.x < canvas.width / 2) this.x += CONFIG.playerSpeed;
+
+        // Shooting
+        if (keys['Space'] && frameCount % 8 === 0) {
+            bullets.push(new Bullet(this.x + this.width, this.y + this.height / 2));
+        }
+    }
+
+    draw() {
+        ctx.fillStyle = this.color;
+        // Draw a blocky retro ship
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(this.x + 5, this.y + 4, 4, 4); // cockpit
+        ctx.fillStyle = '#088';
+        ctx.fillRect(this.x - 4, this.y + 2, 4, 12); // engine glow
+    }
+}
+
+class Bullet {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.radius = 3;
+        this.speed = CONFIG.bulletSpeed;
+    }
+
+    update() {
+        this.x += this.speed;
+    }
+
+    draw() {
+        ctx.fillStyle = '#ff0';
+        ctx.fillRect(this.x, this.y - 2, 6, 4);
+    }
+}
+
+class Enemy {
+    constructor() {
+        this.width = 20;
+        this.height = 20;
+        this.x = canvas.width + 20;
+        this.y = Math.random() * (canvas.height - this.height);
+        this.speed = 2 + Math.random() * 3;
+        this.type = Math.random() > 0.5 ? 'scout' : 'interceptor';
+        this.color = this.type === 'scout' ? '#f0f' : '#f55';
+    }
+
+    update() {
+        this.x -= this.speed;
+        // Sinusoidal movement for interceptors
+        if (this.type === 'interceptor') {
+            this.y += Math.sin(frameCount / 10) * 2;
+        }
+    }
+
+    draw() {
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+        ctx.fillStyle = '#000';
+        ctx.fillRect(this.x + 5, this.y + 5, 5, 5); // "eye"
+    }
+}
+
+class Particle {
+    constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.vx = (Math.random() - 0.5) * 4;
+        this.vy = (Math.random() - 0.5) * 4;
+        this.life = 1.0;
+    }
+
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life -= 0.02;
+    }
+
+    draw() {
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = this.life;
+        ctx.fillRect(this.x, this.y, 3, 3);
+        ctx.globalAlpha = 1.0;
+    }
+}
+
+class Star {
+    constructor() {
+        this.reset(true);
+    }
+
+    reset(initial = false) {
+        this.x = initial ? Math.random() * canvas.width : canvas.width + 10;
+        this.y = Math.random() * canvas.height;
+        this.size = Math.random() * 2;
+        this.speed = 0.5 + Math.random() * 2;
+    }
+
+    update() {
+        this.x -= this.speed;
+        if (this.x < 0) this.reset();
+    }
+
+    draw() {
+        ctx.fillStyle = '#444';
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+    }
+}
+
+// Initialization
+function init() {
+    player = new Player();
+    bullets = [];
+    enemies = [];
+    particles = [];
+    stars = [];
+    score = 0;
+    frameCount = 0;
+    for (let i = 0; i < 50; i++) stars.push(new Star());
+}
+
+function startGame() {
+    init();
+    gameState = 'PLAYING';
+    startMenu.classList.add('hidden');
+    gameOverMenu.classList.add('hidden');
+}
+
+function gameOver() {
+    gameState = 'GAMEOVER';
+    gameOverMenu.classList.remove('hidden');
+    finalScoreText.innerText = `SCORE: ${score}`;
+}
+
+// Main Loop
+function loop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (gameState === 'PLAYING') {
+        frameCount++;
+
+        // 1. Background
+        stars.forEach(star => {
+            star.update();
+            star.draw();
+        });
+
+        // 2. Player
+        player.update();
+        player.draw();
+
+        // 3. Bullets
+        bullets.forEach((b, i) => {
+            b.update();
+            b.draw();
+            if (b.x > canvas.width) bullets.splice(i, 1);
+        });
+
+        // 4. Enemies
+        if (frameCount % CONFIG.enemySpawnRate === 0 && enemies.length < CONFIG.maxEnemies) {
+            enemies.push(new Enemy());
+        }
+
+        enemies.forEach((en, i) => {
+            en.update();
+            en.draw();
+
+            // Collision: Bullet vs Enemy
+            bullets.forEach((b, bi) => {
+                if (b.x > en.x && b.x < en.x + en.width && b.y > en.y && b.y < en.y + en.height) {
+                    // Explosion
+                    for(let p=0; p<8; p++) particles.push(new Particle(en.x + 10, en.y + 10, en.color));
+                    
+                    enemies.splice(i, 1);
+                    bullets.splice(bi, 1);
+                    score += 100;
+                    scoreBoard.innerText = `SCORE: ${score}`;
+                }
+            });
+
+            // Collision: Player vs Enemy
+            if (player.x < en.x + en.width && player.x + player.width > en.x &&
+                player.y < en.y + en.height && player.y + player.height > en.y) {
+                gameOver();
+            }
+
+            // Remove off-screen
+            if (en.x < -20) enemies.splice(i, 1);
+        });
+
+        // 5. Particles
+        particles.forEach((p, i) => {
+            p.update();
+            p.draw();
+            if (p.life <= 0) particles.splice(i, 1);
+        });
+
+    } else if (gameState === 'GAMEOVER') {
+        // Draw static background for menu
+        stars.forEach(star => {
+            star.update();
+            star.draw();
+        });
+    }
+
+    requestAnimationFrame(loop);
+}
+
+// Start the engine
+loop();
+
+</script>
+</body>
+</html>
+```
+
+### Key Features of this Implementation:
+
+1.  **Retro Visuals:** 
+    *   Uses `image-rendering: pixelated` to ensure the canvas doesn't blur when scaling.
+    *   Uses a limited color palette (Cyan, Magenta, Yellow, White) to mimic the C64's color modes.
+    *   All graphics are drawn using `fillRect`, creating a "blocky" pixel-art look without needing external `.png` files.
+2.  **Gameplay Mechanics:**
+    *   **Horizontal Scrolling:** The stars and enemies move from right to left, creating the illusion of forward flight.
+    *   **Enemy Variety:** Includes "Scouts" (straight movement) and "Interceptors" (sinusoidal/wavy movement).
+    *   **Particle System:** When an enemy is destroyed, it triggers a burst of colored pixels.
+    *   **Difficulty:** Enemies spawn at a set rate, and the player must dodge or shoot them to survive.
+3.  **Technical Design:**
+    *   **Single File:** Everything (HTML, CSS, JS) is contained in one block.
+    *   **Zero Dependencies:** No external libraries like jQuery or Phaser are used; it relies purely on the native HTML5 Canvas API.
+    *   **Responsive Logic:** The game loop uses `requestAnimationFrame` for smooth performance.
+
+### How to Play:
+*   **Arrow Keys:** Move your ship (Up, Down, Left, Right).
+*   **Spacebar:** Fire your laser.
+*   **Goal:** Destroy the incoming enemy ships and avoid collisions to increase your score.

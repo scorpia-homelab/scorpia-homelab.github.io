@@ -1,0 +1,3 @@
+**Reasoning:** The phrase "all but 9 die" means that 9 sheep survived, while the rest died.
+
+**Final number:** 9

@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fractal Explorer: Mandelbrot & Julia</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #121212;
+            color: #e0e0e0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        h1 { margin: 20px 0 10px 0; font-weight: 300; }
+
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .card {
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        canvas {
+            background: #000;
+            border-radius: 4px;
+            cursor: crosshair;
+            image-rendering: pixelated; /* Keeps it sharp */
+        }
+
+        .controls {
+            margin-top: 15px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .slider-group {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        label { font-size: 0.9rem; color: #bbb; }
+
+        input[type=range] {
+            flex: 1;
+            margin: 0 10px;
+            cursor: pointer;
+        }
+
+        .instructions {
+            max-width: 800px;
+            font-size: 0.85rem;
+            color: #888;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .btn-reset {
+            background: #444;
+            border: none;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .btn-reset:hover { background: #666; }
+    </style>
+</head>
+<body>
+
+    <h1>Fractal Explorer</h1>
+    <div class="instructions">
+        Mandelbrot: <b>Click</b> to zoom in. <br>
+        Julia: <b>Move sliders</b> to change the constant $c$.
+    </div>
+
+    <div class="container">
+        <!-- Mandelbrot Card -->
+        <div class="card">
+            <canvas id="mandelCanvas" width="400" height="400"></canvas>
+            <div class="controls">
+                <div style="text-align: center; font-weight: bold; margin-bottom: 5px;">Mandelbrot Set</div>
+                <button class="btn-reset" onclick="resetMandelbrot()">Reset Zoom</button>
+            </div>
+        </div>
+
+        <!-- Julia Card -->
+        <div class="card">
+            <canvas id="juliaCanvas" width="400" height="400"></canvas>
+            <div class="controls">
+                <div style="text-align: center; font-weight: bold; margin-bottom: 5px;">Julia Set</div>
+                <div class="slider-group">
+                    <label>Real (c)</label>
+                    <input type="range" id="cReal" min="-1" max="1" step="0.01" value="-0.7">
+                </div>
+                <div class="slider-group">
+                    <label>Imag (c)</label>
+                    <input type="range" id="cImag" min="-1" max="1" step="0.01" value="0.27">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * MATH CORE
+         * Mandelbrot: z_{n+1} = z_n^2 + c, where z_0 = 0
+         * Julia:     z_{n+1} = z_n^2 + c, where z_0 = pixel_coord
+         */
+
+        const mandelCanvas = document.getElementById('mandelCanvas');
+        const juliaCanvas = document.getElementById('juliaCanvas');
+        const mCtx = mandelCanvas.getContext('2d');
+        const jCtx = juliaCanvas.getContext('2d');
+
+        // Mandelbrot State
+        let mZoom = 1.0;
+        let mOffX = -0.5;
+        let mOffY = 0;
+        const mMaxIter = 150;
+
+        // Julia State
+        let cRe = -0.7;
+        let cIm = 0.27;
+        const jMaxIter = 150;
+
+        // --- COLORING ENGINE ---
+        // Uses HSL to create a smooth aesthetic
+        function getColor(iter, maxIter, z2) {
+            if (iter >= maxIter) return [0, 0, 0]; // Black for the set itself
+            
+            // Smooth coloring math: iteration + 1 - log(log(|z|))/log(2)
+            // For simplicity in this single file, we use a scaled iteration index
+            const hue = (iter * 5) % 360;
+            const saturation = 80;
+            const lightness = 50;
+            
+            // Convert HSL to RGB for ImageData
+            return hslToRgb(hue / 360, saturation / 100, lightness / 100);
+        }
+
+        function hslToRgb(h, s, l) {
+            let r, g, b;
+            if (s === 0) { r = g = b = l; } 
+            else {
+                const hue2 = h * 6;
+                const a = l - l * s / 2;
+                const b_val = 2 * a;
+                const m = s * l / (1 - l);
+                const x = (1 - m) * Math.abs((hue2 % 2) - 1);
+                if (hue2 < 1) [r,g,b] = [a + b_val * x, a, a];
+                else if (hue2 < 2) [r,g,b] = [a, a + b_val * x, a];
+                else if (hue2 < 3) [r,g,b] = [a, a, a + b_val * x];
+                else if (hue2 < 4) [r,g,b] = [a - b_val * x, a, a];
+                else if (hue2 < 5) [r,g,b] = [a, a - b_val * x, a];
+                else [r,g,b] = [a, a, a - b_val * x];
+            }
+            return [r * 255, g * 255, b * 255];
+        }
+
+        // --- RENDERING ENGINES ---
+
+        function drawMandelbrot() {
+            const w = mandelCanvas.width;
+            const h = mandelCanvas.height;
+            const imgData = mCtx.createImageData(w, h);
+            
+            for (let py = 0; py < h; py++) {
+                for (let px = 0; px < w; px++) {
+                    // Map pixel to complex plane
+                    // Scale is adjusted by zoom
+                    let cx = (px / w - 0.5) * (3.5 / mZoom) + mOffX;
+                    let cy = (py / h - 0.5) * (3.5 / mZoom) + mOffY;
+
+                    let zr = 0, zi = 0;
+                    let iter = 0;
+                    
+                    while (zr*zr + zi*zi < 4 && iter < mMaxIter) {
+                        let tr = zr*zr - zi*zi + cx;
+                        zi = 2 * zr * zi + cy;
+                        zr = tr;
+                        iter++;
+                    }
+
+                    const [r, g, b] = getColor(iter, mMaxIter);
+                    const idx = (py * w + px) * 4;
+                    imgData.data[idx] = r;
+                    imgData.data[idx+1] = g;
+                    imgData.data[idx+2] = b;
+                    imgData.data[idx+3] = 255;
+                }
+            }
+            mCtx.putImageData(imgData, 0, 0);
+        }
+
+        function drawJulia() {
+            const w = juliaCanvas.width;
+            const h = juliaCanvas.height;
+            const imgData = jCtx.createImageData(w, h);
+            
+            // c is the constant provided by sliders
+            const cr = cRe;
+            const ci = cIm;
+
+            for (let py = 0; py < h; py++) {
+                for (let px = 0; px < w; px++) {
+                    // Map pixel to complex plane (z_0)
+                    let zr = (px / w - 0.5) * 3.0;
+                    let zi = (py / h - 0.5) * 3.0;
+
+                    let iter = 0;
+                    while (zr*zr + zi*zi < 4 && iter < jMaxIter) {
+                        let tr = zr*zr - zi*zi + cr;
+                        zi = 2 * zr * zi + ci;
+                        zr = tr;
+                        iter++;
+                    }
+
+                    const [r, g, b] = getColor(iter, jMaxIter);
+                    const idx = (py * w + px) * 4;
+                    imgData.data[idx] = r;
+                    imgData.data[idx+1] = g;
+                    imgData.data[idx+2] = b;
+                    imgData.data[idx+3] = 255;
+                }
+            }
+            jCtx.putImageData(imgData, 0, 0);
+        }
+
+        // --- INTERACTION LOGIC ---
+
+        function resetMandelbrot() {
+            mZoom = 1.0;
+            mOffX = -0.5;
+            mOffY = 0;
+            drawMandelbrot();
+        }
+
+        mandelCanvas.addEventListener('click', (e) => {
+            const rect = mandelCanvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            // Calculate the complex coordinate clicked
+            // We need to find where the user clicked in the current view
+            const w = mandelCanvas.width;
+            const h = mandelCanvas.height;
+            
+            // The current view bounds
+            const viewWidth = 3.5 / mZoom;
+            const viewHeight = 3.5 / mZoom;
+
+            // New center is the clicked coordinate
+            mOffX += (mouseX / w - 0.5) * viewWidth;
+            mOffY += (mouseY / h - 0.5) * viewHeight;
+
+            // Zoom in
+            mZoom *= 2.5;
+            
+            drawMandelbrot();
+        });
+
+        // Julia Slider Listeners
+        const sReal = document.getElementById('cReal');
+        const sImag = document.getElementById('cImag');
+
+        function updateJulia() {
+            cRe = parseFloat(sReal.value);
+            cIm = parseFloat(sImag.value);
+            drawJulia();
+        }
+
+        sReal.addEventListener('input', updateJulia);
+        sImag.addEventListener('input', updateJulia);
+
+        // Initial Render
+        drawMandelbrot();
+        drawJulia();
+
+    </script>
+</body>
+</html>
+```
