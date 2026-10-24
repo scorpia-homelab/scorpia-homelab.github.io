@@ -66,6 +66,8 @@
   th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
   th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
   #hist thead th { position: sticky; top: 0; background: var(--card); z-index: 1; box-shadow: 0 1px 0 var(--line); }
+  #modal .obs-wrap { overflow: auto; max-height: 360px; border: 1px solid var(--line); border-radius: 8px; }
+  #modal .obs-wrap thead th { position: sticky; top: 0; background: var(--card); z-index: 1; box-shadow: 0 1px 0 var(--line); }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   td .drop { color: var(--green); font-weight: 600; }
   td .rise { color: var(--red); font-weight: 600; }
@@ -347,8 +349,8 @@ function openDetail(id) {
     '<div class="legend"><span><span class="swatch" style="background:var(--green)"></span>cheapest reading</span>' +
     '<span><span class="swatch" style="background:var(--red)"></span>dearest reading</span>' +
     '<span style="margin-left:auto;">hover a point for date, price and note</span></div></div>' +
-    '<h3 style="margin:18px 0 8px;font-size:14px;">Recent readings</h3>' +
-    '<div style="overflow:auto;"><table><thead><tr><th>Date</th><th class="num">Price</th><th class="num">$/100g</th>' +
+    '<h3 style="margin:18px 0 8px;font-size:14px;">All readings</h3>' +
+    '<div class="obs-wrap"><table><thead><tr><th>Date</th><th class="num">Price</th><th class="num">$/100g</th>' +
     '<th class="num">Δ vs prev</th><th>Method / note</th></tr></thead><tbody>';
   const obs = [];
   let prev = null;
@@ -365,7 +367,7 @@ function openDetail(id) {
       '</td><td class="num">'+(h.per_100g != null ? fmt100(h.per_100g) : '<span class="fail">—</span>')+
       '</td><td class="num">'+d+'</td><td style="color:var(--muted)">'+esc(h.note || h.method || '')+'</td></tr>');
   });
-  html += obs.slice(-15).reverse().join('') + '</tbody></table></div>';
+  html += obs.slice().reverse().join('') + '</tbody></table></div>';
   document.getElementById('modal').innerHTML = html;
   document.getElementById('modal-bg').classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -389,5 +391,5 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
 $('#footer').textContent = 'Data: ' + data.items.length + ' items · source: ~/.hermes/price-watches/prices.json · generated ' +
   new Date().toLocaleString('en-AU');
 </script>
-<div style='margin-top:26px;padding-top:14px;border-top:1px solid #262245;font-size:12px;color:#6f68a0'>Part of <a href='/'>scorpia.xyz</a> — daily AU retail price watch (Woolworths, Bunnings, BigW) by Peter + Hermes Agent. Every observation recorded; alerts on drops and all-time lows. Site built 2026-10-24 04:53 UTC.</div></body>
+<div style='margin-top:26px;padding-top:14px;border-top:1px solid #262245;font-size:12px;color:#6f68a0'>Part of <a href='/'>scorpia.xyz</a> — daily AU retail price watch (Woolworths, Bunnings, BigW) by Peter + Hermes Agent. Every observation recorded; alerts on drops and all-time lows. Site built 2026-10-24 06:10 UTC.</div></body>
 </html>
