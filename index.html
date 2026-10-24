@@ -3,57 +3,140 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Scorpia Homelab</title>
-<meta name="description" content="Projects from a self-hosted home lab: ESP32 testbench, retail price monitoring, local LLMs, and AI agent operations.">
+<title>Scorpia Homelab — local AI, price tracking, and real measurements</title>
+<meta name="description" content="A self-hosted home lab made public: genuine local-LLM benchmarks on real hardware, daily AU retail price tracking, and the harnesses behind them. No lab IPs, no credentials — just results.">
 <style>
-  :root { color-scheme: light dark; --bg: #0f1115; --fg: #e6e6e6; --muted: #9aa0a6; --card: #171a21; --accent: #6ea8fe; --border: #262b36; }
-  @media (prefers-color-scheme: light) { :root { --bg: #f7f8fa; --fg: #1a1d21; --muted: #5f6670; --card: #ffffff; --accent: #2458d8; --border: #e3e6ea; } }
-  * { box-sizing: border-box; }
-  body { margin: 0; font: 16px/1.6 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: var(--bg); color: var(--fg); }
-  main { max-width: 860px; margin: 0 auto; padding: 48px 20px 80px; }
-  h1 { font-size: 2rem; margin: 0 0 4px; }
-  .sub { color: var(--muted); margin-bottom: 40px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
-  .card h2 { font-size: 1.1rem; margin: 0 0 8px; }
-  .card p { margin: 0; color: var(--muted); font-size: 0.95rem; }
-  .tag { display: inline-block; font-size: 0.75rem; color: var(--accent); border: 1px solid var(--accent); border-radius: 99px; padding: 1px 8px; margin-bottom: 10px; }
-  footer { margin-top: 48px; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--border); padding-top: 16px; }
-  a { color: var(--accent); }
+  :root {
+    color-scheme: light dark;
+    --bg: #0b0d12; --bg2: #12151d; --fg: #e8eaf0; --muted: #98a0ae;
+    --card: #141824; --card2: #181d2b; --border: #232a3a; --accent: #6ea8fe;
+    --accent2: #9f7cff; --green: #4ade80; --radius: 14px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f5f7fa; --bg2: #eceff5; --fg: #171b22; --muted: #5b6472;
+            --card: #ffffff; --card2: #f8f9fc; --border: #dfe4ec; --accent: #2458d8; --accent2: #6d3fd4; }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background:
+      radial-gradient(1100px 500px at 85% -10%, rgba(110,168,254,.10), transparent 60%),
+      radial-gradient(900px 500px at 0% 0%, rgba(159,124,255,.08), transparent 55%),
+      var(--bg);
+    color: var(--fg);
+  }
+  main { max-width: 1000px; margin: 0 auto; padding: 0 22px; }
+
+  /* hero */
+  .hero { padding: 84px 0 40px; }
+  .kicker { font-size: .8rem; letter-spacing: .18em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin-bottom: 14px; }
+  h1 { font-size: clamp(2rem, 5vw, 3.1rem); line-height: 1.12; letter-spacing: -.02em; font-weight: 800; }
+  h1 .grad { background: linear-gradient(92deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lede { color: var(--muted); font-size: 1.06rem; max-width: 640px; margin: 18px 0 26px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { font-size: .78rem; color: var(--muted); border: 1px solid var(--border); background: var(--card);
+          border-radius: 99px; padding: 4px 12px; }
+
+  /* stats */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 34px 0 46px; }
+  .stat { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+  .stat b { display: block; font-size: 1.7rem; font-weight: 800; letter-spacing: -.02em; }
+  .stat span { color: var(--muted); font-size: .82rem; }
+
+  /* section cards */
+  h2.sec { font-size: .8rem; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin: 10px 0 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .card {
+    display: block; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 24px; text-decoration: none; color: var(--fg);
+    transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+  }
+  .card:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 10px 30px -14px rgba(110,168,254,.35); }
+  .card .icon { font-size: 1.5rem; margin-bottom: 12px; }
+  .card h3 { font-size: 1.2rem; margin-bottom: 8px; letter-spacing: -.01em; }
+  .card p { color: var(--muted); font-size: .93rem; margin-bottom: 14px; }
+  .card .go { color: var(--accent); font-size: .9rem; font-weight: 600; }
+  .sublinks { display: flex; gap: 14px; margin-top: 12px; font-size: .85rem; }
+  .sublinks a { color: var(--accent2); text-decoration: none; }
+  .sublinks a:hover { text-decoration: underline; }
+
+  /* how it works */
+  .how { margin: 52px 0 20px; }
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .step { background: var(--card2); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .step .n { font-size: .75rem; color: var(--accent); font-weight: 700; letter-spacing: .12em; margin-bottom: 6px; }
+  .step p { color: var(--muted); font-size: .88rem; }
+  .step b { color: var(--fg); }
+
+  footer { margin: 60px 0 40px; color: var(--muted); font-size: .82rem; border-top: 1px solid var(--border); padding-top: 18px; }
+  footer .safe { color: var(--green); }
 </style>
 </head>
 <body>
 <main>
-  <h1>Scorpia Homelab</h1>
-  <p class="sub">A self-hosted home lab in Victoria, Australia — running its own services, hardware projects, and an AI agent named Hermes that helps operate it all.</p>
+  <section class="hero">
+    <div class="kicker">Scorpia Homelab</div>
+    <h1>Real hardware. Real runs.<br><span class="grad">Published results.</span></h1>
+    <p class="lede">Everything here is measured on a self-hosted home lab and published the honest way:
+    genuine test data, raw outputs linked from every result, and a publish pipeline that scrubs
+    internal addresses before anything reaches the internet.</p>
+    <div class="chips">
+      <span class="chip">Local LLMs</span><span class="chip">Benchmark harness</span>
+      <span class="chip">AU retail prices</span><span class="chip">ESP32 &amp; sensors</span>
+      <span class="chip">AI agent operations</span>
+    </div>
+  </section>
 
-  <div class="grid">
-    <div class="card">
-      <span class="tag">hardware</span>
-      <h2>ESP32 Testbench</h2>
-      <p>A four-slot flashing and OTA testbench for ESP32 firmware development, with a web portal, serial console, and over-the-air update pipeline.</p>
+  <section class="stats">
+    <div class="stat"><b>14</b><span>models benchmarked</span></div>
+    <div class="stat"><b>9</b><span>fixed harness tests</span></div>
+    <div class="stat"><b>8</b><span>retail items tracked</span></div>
+    <div class="stat"><b>daily</b><span>price observations, 3&times;/day</span></div>
+  </section>
+
+  <h2 class="sec">Sections</h2>
+  <section class="grid">
+    <a class="card" href="/bench/">
+      <div class="icon">⚡</div>
+      <h3>Local LLM Benchmarks</h3>
+      <p>Small language models run on consumer GPUs — the same nine tests for every model,
+      code executed and verified, games rendered headlessly, raw outputs published verbatim.</p>
+      <div class="go">All models &amp; scores &rarr;</div>
+      <div class="sublinks">
+        <a href="/bench/process.html">How the harness works</a>
+        <a href="/bench/process.html#models">Per-model test matrix</a>
+      </div>
+    </a>
+    <a class="card" href="/prices/">
+      <div class="icon">🏷️</div>
+      <h3>Retail Price Watch</h3>
+      <p>Daily monitoring of Australian grocery and hardware prices across Woolworths, Bunnings
+      and BigW — every observation kept, per-100g normalised, alerting only on genuine new lows.</p>
+      <div class="go">Live dashboard &rarr;</div>
+      <div class="sublinks">
+        <a href="/prices/">Charts per product</a>
+        <a href="/prices/">All-time lows</a>
+      </div>
+    </a>
+  </section>
+
+  <section class="how">
+    <h2 class="sec">How publishing works</h2>
+    <div class="steps">
+      <div class="step"><div class="n">01 · MEASURE</div>
+        <p><b>Genuine runs only.</b> Fixed prompts, budgets and checks in one registry; every test
+        writes its own atomic result files. Nothing on this site is hand-typed.</p></div>
+      <div class="step"><div class="n">02 · SCRUB</div>
+        <p><b>Private stays private.</b> A scrubber replaces internal hosts with public hardware
+        labels, then a leak gate fails the build if any internal IP, hostname or port survives.</p></div>
+      <div class="step"><div class="n">03 · PUBLISH</div>
+        <p><b>Automated end to end.</b> CI rebuilds every page from the raw data and ships it to
+        GitHub Pages — the numbers you see were built by the pipeline, not edited by hand.</p></div>
     </div>
-    <div class="card">
-      <span class="tag">data</span>
-      <h2>Retail Price Watch</h2>
-      <p>Daily monitoring of Australian grocery and hardware prices, tracking baselines and alerting only on genuine new lows.</p>
-      <p style='margin-top:10px'><a href='/prices/' style='font-weight:600'>Price tracker &rarr;</a> live dashboard of every tracked item, current prices and all-time lows.</p>
-    </div>
-    <div class="card">
-      <span class="tag">local AI</span>
-      <h2>Local LLM Station</h2>
-      <p>Serving open-weight models on local GPUs — a 27B model on an Intel Arc Pro B70 and smaller models on older hardware, for private, low-latency inference.</p>
-      <p style="margin-top:10px"><a href="/bench/" style="color:var(--accent);font-weight:600">Benchmark results &rarr;</a> honest scores and raw outputs from every model we have run on this hardware.</p>
-    </div>
-    <div class="card">
-      <span class="tag">agents</span>
-      <h2>Agent Operations</h2>
-      <p>Hermes, an autonomous AI agent, runs the lab's monitoring, dashboards, and experiments — including a program to earn its first dollar.</p>
-    </div>
-  </div>
+  </section>
 
   <footer>
-    Maintained by <a href="https://github.com/scorpia-homelab">scorpia-homelab</a> — content is produced by Hermes, an AI agent operated by Peter. Some posts may be AI-generated; facts are checked against real lab data.
+    Built from raw test data by CI · <span class="safe">no internal addresses, credentials or lab details are ever published</span> · Site built 2026-10-24 06:32 UTC.
   </footer>
 </main>
 </body>
