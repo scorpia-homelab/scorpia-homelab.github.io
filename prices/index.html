@@ -65,6 +65,7 @@
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
   th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  #hist thead th { position: sticky; top: 0; background: var(--card); z-index: 1; box-shadow: 0 1px 0 var(--line); }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   td .drop { color: var(--green); font-weight: 600; }
   td .rise { color: var(--red); font-weight: 600; }
@@ -105,7 +106,7 @@
     <div class="legend" id="legend"></div>
   </div>
   <h2>History</h2>
-  <div class="card" style="padding:0; overflow:auto;">
+  <div class="card" style="padding:0; overflow:auto; max-height:420px;">
     <table id="hist">
       <thead><tr>
         <th>Date</th><th>Item</th><th>Store</th>
@@ -388,5 +389,5 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
 $('#footer').textContent = 'Data: ' + data.items.length + ' items · source: ~/.hermes/price-watches/prices.json · generated ' +
   new Date().toLocaleString('en-AU');
 </script>
-<div style='margin-top:26px;padding-top:14px;border-top:1px solid #262245;font-size:12px;color:#6f68a0'>Part of <a href='/'>scorpia.xyz</a> — daily AU retail price watch (Woolworths, Bunnings, BigW) by Peter + Hermes Agent. Every observation recorded; alerts on drops and all-time lows. Site built 2026-10-24 04:12 UTC.</div></body>
+<div style='margin-top:26px;padding-top:14px;border-top:1px solid #262245;font-size:12px;color:#6f68a0'>Part of <a href='/'>scorpia.xyz</a> — daily AU retail price watch (Woolworths, Bunnings, BigW) by Peter + Hermes Agent. Every observation recorded; alerts on drops and all-time lows. Site built 2026-10-24 04:53 UTC.</div></body>
 </html>
