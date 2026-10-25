@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mandelbrot and Julia Sets</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0;
+    background: #0b1020;
+    color: #e8eef7;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  header {
+    padding: 20px 24px 8px;
+  }
+  h1 {
+    margin: 0 0 6px;
+    font-size: 1.55rem;
+    letter-spacing: 0.2px;
+  }
+  .sub {
+    margin: 0 0 18px;
+    color: #9fb2c8;
+    max-width: 900px;
+  }
+  main {
+    padding: 0 24px 28px;
+    display: grid;
+    gap: 20px;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  }
+  .panel {
+    background: #111827;
+    border: 1px solid #26324a;
+    border-radius: 12px;
+    padding: 14px;
+  }
+  .panel h2 {
+    margin: 0 0 10px;
+    font-size: 1.08rem;
+  }
+  canvas {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 8px;
+    background: #000;
+    cursor: crosshair;
+    touch-action: none;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-top: 10px;
+    font-size: 0.92rem;
+  }
+  label {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+  }
+  input[type="range"] {
+    width: 150px;
+  }
+  button {
+    background: #1f2a44;
+    color: #e8eef7;
+    border: 1px solid #3b4d73;
+    border-radius: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+  }
+  button:hover {
+    background: #27365a;
+  }
+  .hint {
+    color: #8ea3bd;
+    font-size: 0.88rem;
+  }
+  .caption {
+    margin-top: 8px;
+    color: #b8c7dc;
+    font-size: 0.9rem;
+  }
+  .global {
+    grid-column: 1 / -1;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Mandelbrot and Julia Sets</h1>
+  <p class="sub">
+    Both images use escape-time coloring for the quadratic map
+    <strong>z<sub>n+1</sub> = z<sub>n</sub>² + c</strong>.
+    Drag to pan, scroll to zoom. The Julia parameter <strong>c</strong> is adjustable.
+  </p>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Mandelbrot Set</h2>
+    <canvas id="mandelbrotCanvas" width="512" height="512"></canvas>
+    <div class="controls">
+      <button id="resetMandelbrot">Reset view</button>
+      <span class="hint">Scroll to zoom, drag to pan.</span>
+    </div>
+    <div class="caption">
+      Mandelbrot: start at z₀ = 0; each pixel is a value of c.
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Julia Set</h2>
+    <canvas id="juliaCanvas" width="512" height="512"></canvas>
+    <div class="controls">
+      <button id="resetJulia">Reset view</button>
+      <label>
+        Re(c)
+        <input id="cReal" type="range" min="-1" max="1" step="0.0001" value="0.7885">
+      </label>
+      <label>
+        Im(c)
+        <input id="cImag" type="range" min="-1" max="1" step="0.0001" value="-0.1566">
+      </label>
+      <button id="randomC">Random c</button>
+    </div>
+    <div class="caption" id="juliaCaption">
+      Julia: fixed c; each pixel is the starting value z₀.
+    </div>
+  </section>
+
+  <section class="panel global">
+    <div class="controls">
+      <label>
+        Iteration depth
+        <input id="maxIter" type="range" min="50" max="2000" step="10" value="512">
+        <span id="maxIterValue">512</span>
+      </label>
+      <span class="hint">Higher depth resolves finer filaments, but rendering gets slower.</span>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  const mandelbrotCanvas = document.getElementById("mandelbrotCanvas");
+  const juliaCanvas = document.getElementById("juliaCanvas");
+  const mCtx = mandelbrotCanvas.getContext("2d");
+  const jCtx = juliaCanvas.getContext("2d");
+
+  const cRealInput = document.getElementById("cReal");
+  const cImagInput = document.getElementById("cImag");
+  const maxIterInput = document.getElementById("maxIter");
+  const maxIterValue = document.getElementById("maxIterValue");
+  const juliaCaption = document.getElementById("juliaCaption");
+
+  const mandelbrotView = { cx: -0.5, cy: 0.0, scale: 3.0 };
+  const juliaView = { cx: 0.0, cy: 0.0, scale: 3.0 };
+
+  const mandelbrotDefault = { cx: -0.5, cy: 0.0, scale: 3.0 };
+  const juliaDefault = { cx: 0.0, cy: 0.0, scale: 3.0 };
+
+  // Palette: black -> deep blue -> cyan -> gold -> white.
+  const palette = new Uint8ClampedArray(256 * 3);
+  {
+    const stops = [
+      [0, 0, 0],
+      [0, 26, 77],
+      [0, 170, 255],
+      [255, 204, 0],
+      [255, 255, 255]
+    ];
+    for (let i = 0; i < 256; i++) {
+      const t = i / 255;
+      let s = 0;
+      while (s < stops.length - 2 && t > (s + 1) / (stops.length - 1)) s++;
+      const a = stops[s];
+      const b = stops[s + 1];
+      const local = (t - s / (stops.length - 1)) / (1 / (stops.length - 1));
+      palette[i * 3 + 0] = a[0] + (b[0] - a[0]) * local;
+      palette[i * 3 + 1] = a[1] + (b[1] - a[1]) * local;
+      palette[i * 3 + 2] = a[2] + (b[2] - a[2]) * local;
+    }
+  }
+
+  function renderFractal(canvas, ctx, type, view, c, maxIter) {
+    const W = canvas.width;
+    const H = canvas.height;
+    const img = ctx.createImageData(W, H);
+    const data = img.data;
+
+    const scale = view.scale;
+    const cx = view.cx;
+    const cy = view.cy;
+
+    const stepX = scale / W;
+    const stepY = scale / H;
+
+    let px = cx - 0.5 * scale;
+    let py = cy - 0.5 * scale;
+
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        let zx, zy, cRe, cIm;
+
+        if (type === "mandelbrot") {
+          zx = 0;
+          zy = 0;
+          cRe = px;
+          cIm = py;
+        } else {
+          zx = px;
+          zy = py;
+          cRe = c.re;
+          cIm = c.im;
+        }
+
+        let n = 0;
+        let r2 = zx * zx + zy * zy;
+
+        while (n < maxIter && r2 <= 4) {
+          const nx = zx * zx - zy * zy + cRe;
+          zy = 2 * zx * zy + cIm;
+          zx = nx;
+          r2 = zx * zx + zy * zy;
+          n++;
+        }
+
+        const idx = (y * W + x) * 4;
+
+        if (n >= maxIter) {
+          data[idx] = 0;
+          data[idx + 1] = 0;
+          data[idx + 2] = 0;
+          data[idx + 3] = 255;
+        } else {
+          // Smooth escape-time coloring.
+          // mu = n + 2 - log(log(r2)) / log(2)
+          const mu = n + 2 - Math.log(Math.log(r2)) / Math.LN2;
+          let t = mu / maxIter;
+          if (t < 0) t = 0;
+          if (t > 1) t = 1;
+
+          const p = (t * 255) | 0;
+          data[idx] = palette[p * 3 + 0];
+          data[idx + 1] = palette[p * 3 + 1];
+          data[idx + 2] = palette[p * 3 + 2];
+          data[idx + 3] = 255;
+        }
+
+        px += stepX;
+      }
+      px = cx - 0.5 * scale;
+      py -= stepY;
+    }
+
+    ctx.putImageData(img, 0, 0);
+  }
+
+  function getJuliaC() {
+    return {
+      re: parseFloat(cRealInput.value),
+      im: parseFloat(cImagInput.value)
+    };
+  }
+
+  function updateJuliaCaption() {
+    const c = getJuliaC();
+    const sign = c.im < 0 ? "−" : "+";
+    juliaCaption.textContent =
+      `Julia set for c = ${c.re.toFixed(4)} ${sign} ${Math.abs(c.im).toFixed(4)}i; each pixel is z₀.`;
+  }
+
+  let renderQueued = false;
+  function scheduleRender() {
+    if (renderQueued) return;
+    renderQueued = true;
+    requestAnimationFrame(() => {
+      renderQueued = false;
+      const maxIter = parseInt(maxIterInput.value, 10);
+      const c = getJuliaC();
+      renderFractal(mandelbrotCanvas, mCtx, "mandelbrot", mandelbrotView, c, maxIter);
+      renderFractal(juliaCanvas, jCtx, "julia", juliaView, c, maxIter);
+      updateJuliaCaption();
+    });
+  }
+
+  function attachPanZoom(canvas, view, resetView) {
+    let dragging = false;
+    let lastX = 0;
+    let lastY = 0;
+
+    canvas.addEventListener("mousedown", (e) => {
+      dragging = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      e.preventDefault();
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      if (!dragging) return;
+      const rect = canvas.getBoundingClientRect();
+      const dx = (e.clientX - lastX) / rect.width * view.scale;
+      const dy = (e.clientY - lastY) / rect.height * view.scale;
+      view.cx -= dx;
+      view.cy += dy;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      scheduleRender();
+    });
+
+    window.addEventListener("mouseup", () => {
+      dragging = false;
+    });
+
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const mx = (e.clientX - rect.left) / rect.width;
+      const my = (e.clientY - rect.top) / rect.height;
+
+      const px = view.cx + (mx - 0.5) * view.scale;
+      const py = view.cy - (my - 0.5) * view.scale;
+
+      const factor = e.deltaY < 0 ? 1 / 1.1 : 1.1;
+      view.scale *= factor;
+
+      view.cx = px - (mx - 0.5) * view.scale;
+      view.cy = py + (my - 0.5) * view.scale;
+
+      scheduleRender();
+    }, { passive: false });
+
+    // Basic touch support: one-finger pan, pinch zoom.
+    let touchState = null;
+
+    canvas.addEventListener("touchstart", (e) => {
+      if (e.touches.length === 1) {
+        touchState = {
+          type: "pan",
+          x: e.touches[0].clientX,
+          y: e.touches[0].clientY
+        };
+      } else if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        touchState = {
+          type: "zoom",
+          dist: Math.hypot(dx, dy),
+          cx: view.cx,
+          cy: view.cy,
+          scale: view.scale
+        };
+      }
+      e.preventDefault();
+    }, { passive: false });
+
+    canvas.addEventListener("touchmove", (e) => {
+      if (!touchState) return;
+
+      if (touchState.type === "pan" && e.touches.length === 1) {
+        const rect = canvas.getBoundingClientRect();
+        const dx = (e.touches[0].clientX - touchState.x) / rect.width * view.scale;
+        const dy = (e.touches[0].clientY - touchState.y) / rect.height * view.scale;
+        view.cx -= dx;
+        view.cy += dy;
+        touchState.x = e.touches[0].clientX;
+        touchState.y = e.touches[0].clientY;
+      } else if (touchState.type === "zoom" && e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.hypot(dx, dy);
+        const factor = dist / touchState.dist;
+        view.scale = touchState.scale * factor;
+      }
+
+      scheduleRender();
+      e.preventDefault();
+    }, { passive: false });
+
+    canvas.addEventListener("touchend", () => {
+      touchState = null;
+    });
+
+    document.getElementById(resetView).addEventListener("click", () => {
+      const d = resetView === "resetMandelbrot" ? mandelbrotDefault : juliaDefault;
+      view.cx = d.cx;
+      view.cy = d.cy;
+      view.scale = d.scale;
+      scheduleRender();
+    });
+  }
+
+  attachPanZoom(mandelbrotCanvas, mandelbrotView, "resetMandelbrot");
+  attachPanZoom(juliaCanvas, juliaView, "resetJulia");
+
+  cRealInput.addEventListener("input", scheduleRender);
+  cImagInput.addEventListener("input", scheduleRender);
+  maxIterInput.addEventListener("input", () => {
+    maxIterValue.textContent = maxIterInput.value;
+    scheduleRender();
+  });
+
+  document.getElementById("randomC").addEventListener("click", () => {
+    const r = Math.sqrt(Math.random()) * 0.9;
+    const a = Math.random() * Math.PI * 2;
+    cRealInput.value = (r * Math.cos(a)).toFixed(4);
+    cImagInput.value = (r * Math.sin(a)).toFixed(4);
+    scheduleRender();
+  });
+
+  scheduleRender();
+})();
+</script>
+</body>
+</html>
