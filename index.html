@@ -55,7 +55,9 @@
   .card .icon { font-size: 1.5rem; margin-bottom: 12px; }
   .card h3 { font-size: 1.2rem; margin-bottom: 8px; letter-spacing: -.01em; }
   .card p { color: var(--muted); font-size: .93rem; margin-bottom: 14px; }
-  .card .go { color: var(--accent); font-size: .9rem; font-weight: 600; }
+  .card .go { font-size: .9rem; font-weight: 600; color: var(--accent); }
+  .hlink { color: inherit; text-decoration: none; }
+  .hlink:hover { text-decoration: underline; }
   .sublinks { display: flex; gap: 14px; margin-top: 12px; font-size: .85rem; }
   .sublinks a { color: var(--accent2); text-decoration: none; }
   .sublinks a:hover { text-decoration: underline; }
@@ -96,28 +98,28 @@
 
   <h2 class="sec">Sections</h2>
   <section class="grid">
-    <a class="card" href="/bench/">
+    <div class="card">
       <div class="icon">⚡</div>
-      <h3>Local LLM Benchmarks</h3>
+      <h3><a class="hlink" href="/bench/">Local LLM Benchmarks</a></h3>
       <p>Small language models run on consumer GPUs — the same nine tests for every model,
       code executed and verified, games rendered headlessly, raw outputs published verbatim.</p>
-      <div class="go">All models &amp; scores &rarr;</div>
+      <div class="go"><a class="hlink" href="/bench/">All models &amp; scores &rarr;</a></div>
       <div class="sublinks">
         <a href="/bench/process.html">How the harness works</a>
         <a href="/bench/process.html#models">Per-model test matrix</a>
       </div>
-    </a>
-    <a class="card" href="/prices/">
+    </div>
+    <div class="card">
       <div class="icon">🏷️</div>
-      <h3>Retail Price Watch</h3>
+      <h3><a class="hlink" href="/prices/">Retail Price Watch</a></h3>
       <p>Daily monitoring of Australian grocery and hardware prices across Woolworths, Bunnings
       and BigW — every observation kept, per-100g normalised, alerting only on genuine new lows.</p>
-      <div class="go">Live dashboard &rarr;</div>
+      <div class="go"><a class="hlink" href="/prices/">Live dashboard &rarr;</a></div>
       <div class="sublinks">
         <a href="/prices/">Charts per product</a>
         <a href="/prices/">All-time lows</a>
       </div>
-    </a>
+    </div>
   </section>
 
   <section class="how">
@@ -136,7 +138,7 @@
   </section>
 
   <footer>
-    Built from raw test data by CI · <span class="safe">no internal addresses, credentials or lab details are ever published</span> · Site built 2026-11-01 22:40 UTC.
+    Built from raw test data by CI · <span class="safe">no internal addresses, credentials or lab details are ever published</span> · Site built 2026-11-02 06:31 UTC.
   </footer>
 </main>
 </body>
