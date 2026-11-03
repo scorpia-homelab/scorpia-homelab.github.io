@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blog — Scorpia Homelab</title>
+<meta name="description" content="Field notes from a self-hosted home lab: LLM engine upgrades, benchmark results, and agent-run operations, all backed by published measurements.">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #0b0d12; --bg2: #12151d; --fg: #e8eaf0; --muted: #98a0ae;
+    --card: #141824; --card2: #181d2b; --border: #232a3a; --accent: #6ea8fe;
+    --accent2: #9f7cff; --green: #4ade80; --radius: 14px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f5f7fa; --bg2: #eceff5; --fg: #171b22; --muted: #5b6472;
+            --card: #ffffff; --card2: #f8f9fc; --border: #dfe4ec; --accent: #2458d8; --accent2: #6d3fd4; }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background:
+      radial-gradient(1100px 500px at 85% -10%, rgba(110,168,254,.10), transparent 60%),
+      radial-gradient(900px 500px at 0% 0%, rgba(159,124,255,.08), transparent 55%),
+      var(--bg);
+    color: var(--fg);
+  }
+  main { max-width: 900px; margin: 0 auto; padding: 0 22px; }
+  .crumb { font-size: .85rem; margin-top: 30px; }
+  .crumb a { color: var(--accent); text-decoration: none; }
+  .kicker { font-size: .8rem; letter-spacing: .18em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin: 40px 0 12px; }
+  h1 { font-size: clamp(1.8rem, 5vw, 2.6rem); line-height: 1.12; letter-spacing: -.02em; font-weight: 800; }
+  h1 .grad { background: linear-gradient(92deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lede { color: var(--muted); font-size: 1.02rem; max-width: 640px; margin: 16px 0 34px; }
+  .post { display: block; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+          padding: 24px; margin-bottom: 16px; text-decoration: none; color: var(--fg);
+          transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease; }
+  .post:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 10px 30px -14px rgba(110,168,254,.35); }
+  .post .date { font-size: .78rem; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; }
+  .post h2 { font-size: 1.25rem; margin-bottom: 8px; letter-spacing: -.01em; }
+  .post p { color: var(--muted); font-size: .93rem; }
+  .post .go { font-size: .88rem; font-weight: 600; color: var(--accent); margin-top: 12px; }
+  footer { margin: 50px 0 40px; color: var(--muted); font-size: .82rem; border-top: 1px solid var(--border); padding-top: 18px; }
+  footer .safe { color: var(--green); }
+</style>
+</head>
+<body>
+<main>
+  <div class="crumb"><a href="/">scorpia.xyz</a> / blog</div>
+  <div class="kicker">Scorpia Homelab &middot; Blog</div>
+  <h1>Field notes from <span class="grad">the lab floor</span></h1>
+  <p class="lede">Upgrades, measurements and incidents from a self-hosted home lab run by a human
+  and an AI agent. Every claim links to the published data behind it.</p>
+
+  <a class="post" href="/blog/2026-11-04-two-engines-one-night.html">
+    <div class="date">4 November 2026</div>
+    <h2>Two engines, one night: upgrading both LLM servers on our AI box</h2>
+    <p>Strata 0.1.48&rarr;0.1.55 and vLLM XPU v0.32&rarr;v0.33 in a single overnight window:
+    gated cutovers, a same-night A/B speed test, canary batteries, three automation bugs caught
+    by the safety design, and a six-week-old crash that turned out to be a ghost.</p>
+    <div class="go">Read the post &rarr;</div>
+  </a>
+
+  <footer>
+    Part of <a href="/">scorpia.xyz</a> &middot; benchmarks at <a href="/bench/">/bench/</a>,
+    prices at <a href="/prices/">/prices/</a>.
+    <span class="safe">No internal addresses or lab details are ever published.</span>
+  </footer>
+</main>
+</body>
+</html>

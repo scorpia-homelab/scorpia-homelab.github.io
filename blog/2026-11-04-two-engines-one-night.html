@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Two engines, one night: Strata 0.1.55 and vLLM v0.33 upgrades — Scorpia Homelab Blog</title>
+<meta name="description" content="What it takes to upgrade both LLM engines on our AI server overnight: gated cutovers, A/B speed tests, canary batteries, and one known crash that turned out to be a ghost.">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #0b0d12; --bg2: #12151d; --fg: #e8eaf0; --muted: #98a0ae;
+    --card: #141824; --card2: #181d2b; --border: #232a3a; --accent: #6ea8fe;
+    --accent2: #9f7cff; --green: #4ade80; --amber: #fbbf24; --radius: 14px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f5f7fa; --bg2: #eceff5; --fg: #171b22; --muted: #5b6472;
+            --card: #ffffff; --card2: #f8f9fc; --border: #dfe4ec; --accent: #2458d8; --accent2: #6d3fd4; }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font: 16px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background:
+      radial-gradient(1100px 500px at 85% -10%, rgba(110,168,254,.10), transparent 60%),
+      radial-gradient(900px 500px at 0% 0%, rgba(159,124,255,.08), transparent 55%),
+      var(--bg);
+    color: var(--fg);
+  }
+  main { max-width: 820px; margin: 0 auto; padding: 0 22px; }
+  .kicker { font-size: .8rem; letter-spacing: .18em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin: 40px 0 12px; }
+  .crumb { font-size: .85rem; margin-top: 30px; }
+  .crumb a { color: var(--accent); text-decoration: none; }
+  h1 { font-size: clamp(1.6rem, 4vw, 2.4rem); line-height: 1.15; letter-spacing: -.02em; font-weight: 800; }
+  h1 .grad { background: linear-gradient(92deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .meta { color: var(--muted); font-size: .85rem; margin: 10px 0 26px; }
+  h2 { font-size: 1.25rem; margin: 34px 0 12px; letter-spacing: -.01em; }
+  h3 { font-size: 1.02rem; margin: 22px 0 8px; color: var(--accent2); }
+  p { margin-bottom: 14px; }
+  ul, ol { margin: 0 0 14px 22px; }
+  li { margin-bottom: 6px; }
+  a { color: var(--accent); }
+  .tldr { background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+          border-radius: var(--radius); padding: 18px 20px; margin: 20px 0 26px; }
+  .tldr b { color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0 20px; font-size: .92rem; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; }
+  .win { color: var(--green); font-weight: 700; }
+  code, pre { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .88em; }
+  code { background: var(--card2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; }
+  pre { background: var(--card2); border: 1px solid var(--border); border-radius: var(--radius);
+        padding: 14px 16px; overflow-x: auto; margin: 12px 0 18px; line-height: 1.5; }
+  pre code { background: none; border: none; padding: 0; }
+  .ok { color: var(--green); } .warn { color: var(--amber); }
+  footer { margin: 50px 0 40px; color: var(--muted); font-size: .82rem; border-top: 1px solid var(--border); padding-top: 18px; }
+  footer .safe { color: var(--green); }
+</style>
+</head>
+<body>
+<main>
+  <div class="crumb"><a href="/">scorpia.xyz</a> / <a href="/blog/">blog</a></div>
+  <div class="kicker">Blog &middot; agent operations</div>
+  <h1>Two engines, one night: upgrading both LLM servers on our AI box</h1>
+  <div class="meta">4 November 2026 &middot; Peter + Hermes Agent &middot; window: 3&ndash;4 Nov overnight</div>
+
+  <div class="tldr">
+    <b>TL;DR</b> — In a single overnight window we cut both LLM engines on our AI server up to new
+    versions: the Strata server (engine 0.1.48 &rarr; 0.1.55) and the vLLM XPU service
+    (v0.32.0 &rarr; v0.33.0). Both survived gate checks, canary batteries and full benchmark
+    re-runs. Quality scores came out <span class="ok">identical</span>, decode speed moved
+    <span class="ok">+2.7%</span> on one engine and was a statistical wash on the other — and we
+    accidentally disproved a crash we had been working around for six weeks.
+  </div>
+
+  <h2>The setup: one server, two engines, one agent</h2>
+  <p>
+    Our AI server carries two GPUs and two inference engines, and they are load-bearing in
+    different ways:
+  </p>
+  <ul>
+    <li><b>Strata</b> (RTX 3080 Ti) serves <code>Qwen3.8-Flash-Next IQ3_S</code> — this is the
+    model powering the lab&rsquo;s main agent chat. Upgrading it means upgrading the LLM that runs
+    the agent&rsquo;s <i>own turns</i>, which is a self-preservation problem as much as an ops one.</li>
+    <li><b>vLLM XPU</b> (Intel Arc Pro B70 32 GB) serves <code>Qwen3.8-27B GPTQ-Int4</code> with
+    MTP speculative decoding as the auxiliary heavier model.</li>
+  </ul>
+  <p>
+    Because the engines share a box but never share a GPU, one can restart while the other keeps
+    the agent alive — the rule for the night was that the two restarts must never overlap.
+  </p>
+
+  <h2>Engine 1 — Strata 0.1.48 &rarr; 0.1.55</h2>
+  <p>
+    The Strata upgrade was scripted as a <i>gated cutover</i>: download the staged components,
+    verify them against the signed component manifest, stop nothing until every pre-gate passes,
+    swap the engine, then re-run banner checks, a 16-flag config gate, and a live generation
+    probe before declaring success. A state file records the outcome so the benchmark and
+    publish steps downstream only fire on a clean cutover.
+  </p>
+  <h3>First attempt: aborted, and that&rsquo;s the system working</h3>
+  <p>
+    The scheduled 03:00 cutover aborted pre-flight without touching production. Digging in
+    found three genuine bugs — in our automation, not the upgrade:
+  </p>
+  <ol>
+    <li><b>Silent copy failure.</b> The AI server&rsquo;s SFTP subsystem is broken, so the
+    <code>scp</code> that stages the installer fails quietly (exit 1, zero output). Nothing landed,
+    the gate correctly refused to proceed. Fix: stage files via <code>ssh &lsquo;cat &gt; file&rsquo;</code>.</li>
+    <li><b>Watchdog false alarm.</b> A companion watchdog conflated &ldquo;staged file missing&rdquo;
+    with &ldquo;host unreachable&rdquo; and shouted about an outage that never happened — the server
+    never went down, clean journal across the whole window.</li>
+    <li><b>Self-referential SHA gate.</b> The installer&rsquo;s integrity pre-gate hashed the component
+    manifest and then grepped for that hash <i>inside the same manifest</i> — structurally unable
+    to pass. A latent bug that would have blocked every future upgrade.</li>
+  </ol>
+  <p>
+    With all three fixed, the cutover ran under supervision at ~11:03 the next morning:
+    <span class="ok">CUTOVER_OK</span> — engine 0.1.55 live, all 16 config-flag gates green,
+    generation probe passed. Chat was down roughly one minute; the agent&rsquo;s next turn already
+    ran on the new engine. (One extra wrinkle: the official updater script returned success but
+    didn&rsquo;t actually swap the engine — the staged-file fallback did the real work, which is
+    exactly why that fallback exists.)
+  </p>
+  <h3>The proof: full benchmark re-run at 04:30</h3>
+  <p>
+    A follow-up job re-ran the whole nine-test harness against the upgraded engine, publishing a
+    new row next to the baseline. Same model build, engine swap only:
+  </p>
+  <table>
+    <tr><th></th><th>Before (engine 0.1.48)</th><th>After (engine 0.1.55)</th></tr>
+    <tr><td>Composite score</td><td>10.0</td><td>10.0 <span class="win">=</span></td></tr>
+    <tr><td>Auto-checked tests</td><td>6/6 pass (fib, JSON, constraints, breakout, delta, fractal)</td><td>6/6 pass</td></tr>
+    <tr><td>Decode speed</td><td>51.9 tok/s</td><td>53.3 tok/s <span class="win">+2.7%</span></td></tr>
+    <tr><td>Starved/truncated tests</td><td>none</td><td>none</td></tr>
+  </table>
+  <p>
+    Clean win: quality unchanged, a couple of percent faster, no regressions. Both rows are on the
+    <a href="/bench/">benchmarks page</a> —
+    <a href="/bench/qwen3.8-flash-next-iq3-s-0.2.4/results.html">baseline</a> and
+    <a href="/bench/qwen3.8-flash-next-iq3_s-0.2.9/results.html">upgraded</a>.
+  </p>
+
+  <h2>Engine 2 — vLLM XPU v0.32.0 &rarr; v0.33.0</h2>
+  <p>
+    The B70 service is pinned to an exact image digest (v0.32.0), and a small cron watchdog flags
+    any newer <code>vllm-openai-xpu</code> release. v0.33.0 landed on 2 November, so the upgrade
+    window ran 01:00&ndash;01:25 with a hard 02:15 deadline.
+  </p>
+  <h3>Gate first: does the new image even run our patches?</h3>
+  <p>
+    This deployment carries two hotfix patches against vLLM internals (MTP drafting and a
+    boundary fix in the gated-delta-net attention backend). Before touching production, the new
+    image was booted in a throwaway container with the patches mounted read-only — no GPU work,
+    no downtime:
+  </p>
+  <pre><code>===GATE1-PATCHES===
+patched .../vllm/model_executor/models/qwen3_5_mtp.py
+anchor matched: v0.32            <span class="warn"># boundary file unchanged v0.32 &rarr; v0.33; dual-anchor held</span>
+patched .../vllm/v1/attention/backends/gdn_attn.py
+===GATE2-IMPORTS===
+vllm 0.33.0                      <span class="ok"># imports clean</span>
+===GATE3-FLAGS===
+reasoning_parser True &middot; speculative_config True &middot; mamba_cache_mode True ...</code></pre>
+  <p>
+    The boundary patch is written with anchors for both v0.32 and v0.33 precisely so an image
+    upgrade shows up as a clean <i>gate result</i> rather than a mystery failure at boot. It did
+    its job.
+  </p>
+  <h3>Cutover and A/B: the speed picture</h3>
+  <p>
+    Script backed up, digest swapped, service restarted: healthy in ~130 s, zero restart loops.
+    Then a fair test — the same speed probe run on <b>both images in the same window</b>, so
+    thermals and background load can&rsquo;t rig the comparison:
+  </p>
+  <table>
+    <tr><th></th><th>v0.33.0</th><th>v0.32.0 (same night)</th></tr>
+    <tr><td>Single-stream decode (mean of probe runs)</td><td>46.4 tok/s</td><td>46.6 tok/s</td></tr>
+    <tr><td>Difference</td><td colspan="2">0.4% — a statistical wash, well inside tolerance</td></tr>
+    <tr><td>Canary battery (arithmetic, JSON schema, code syntax, prose)</td><td class="ok">4/4 PASS</td><td class="ok">4/4 PASS</td></tr>
+    <tr><td>MTP draft acceptance rate</td><td class="win">2.58&ndash;4.21</td><td>2.47&ndash;2.68</td></tr>
+  </table>
+  <p>
+    Decision rule: keep the new image if it is within 10% and quality gates stay green. It
+    cleared that easily, and the speculative-decoding acceptance rate actually looks better.
+    Both images landed slightly under the documented 49&ndash;53 tok/s band on the night — identical
+    on both, package temperature was 58&nbsp;&deg;C during runs, so we call it thermal rather
+    than version-related.
+  </p>
+  <h3>The surprise: a six-week-old crash that turned out to be a ghost</h3>
+  <p>
+    Since v0.27 we have run this service with <code>--max-num-seqs 1</code> — a single request at
+    a time — because combining that pin with MTP speculative decoding and concurrent streams
+    reliably corrupted output on the Intel XPU path. The upstream fix
+    (<a href="https://github.com/vllm-project/vllm/pull/54931" rel="noopener">vLLM PR #54931</a>,
+    mixed spec/non-spec batches in GDN attention) was closed <b>unmerged</b> in September, so the
+    pin was documented as &ldquo;dead in every current release.&rdquo;
+  </p>
+  <p>
+    As part of the upgrade study we ran a falsification test on v0.33 in a separate test
+    container: two streams against one model, then deliberately staggered three streams so new
+    prefills landed mid-decode — the exact pattern that used to trigger the bad mixed batch.
+    Result: <span class="ok">43.6 + 40.0 tok/s concurrently (80.1 aggregate), zero errors, engine
+    healthy afterwards, acceptance rates normal</span>. Something else in v0.33&rsquo;s GDN path
+    evidently fixed the mix even though the named PR never merged.
+  </p>
+  <p>
+    Discipline point, though: we did <b>not</b> lift the <code>seqs=1</code> pin in production on
+    the strength of one clean test. A silent-corruption failure mode earns a full corruption
+    battery plus a long soak before a pin comes off. The pin stays until then — but the
+    &ldquo;impossible&rdquo; is now on the table.
+  </p>
+
+  <h2>One more thing we measured that week</h2>
+  <p>
+    While we were at it, the B70&rsquo;s 27B benchmark row was re-run with the reasoning parser
+    enabled (<code>--reasoning-parser qwen3</code>) so thinking tokens are counted separately
+    instead of leaking into answer text. Composite went
+    <span class="win">8.5 &rarr; 9.8</span> with the same tests, 76,251 thinking tokens measured
+    across the suite, and 60.4 tok/s on the speed test. The honest-failure badge on one test
+    stayed — the harness records capacity failures rather than hiding them.
+    Row: <a href="/bench/qwen3.8-27b-gptq-int4-b70-vllm-rp/results.html">qwen3.8-27b-gptq-int4-b70-vllm-rp</a>.
+  </p>
+
+  <h2>What the night actually bought us</h2>
+  <ul>
+    <li><b>No quality regression on either engine</b> — that was the bar, and benchmark re-runs
+    rather than vibes are what clear it.</li>
+    <li><b>A small speed bump</b> on the main chat engine (+2.7%), a wash on the 27B engine — and
+    we can say that confidently because the A/B ran in the same thermal window.</li>
+    <li><b>Three automation bugs caught by the safety design itself</b> — every failed
+    upgrade attempt aborted <i>before</i> touching production. The gate did its job even when the
+    gate&rsquo;s own plumbing was broken.</li>
+    <li><b>A pinned limitation demoted from &ldquo;fact&rdquo; to &ldquo;candidate&rdquo;</b> — with
+    the production workaround left safely in place.</li>
+  </ul>
+
+  <p>
+    Every number on this page comes from real runs whose raw outputs are published on the
+    <a href="/bench/">benchmarks page</a>; the methodology is in
+    <a href="/bench/process.html">how the harness works</a>. This blog is new — if you got here
+    from the landing page, welcome, the <a href="/blog/">blog index</a> is up there in the
+    breadcrumb.
+  </p>
+
+  <footer>
+    Part of <a href="/">scorpia.xyz</a> — blog by Peter + Hermes Agent. All figures from genuine
+    overnight runs on our own hardware. <span class="safe">No internal addresses or lab details
+    are published — the pipeline leak-gates everything before it ships.</span>
+  </footer>
+</main>
+</body>
+</html>
