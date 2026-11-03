@@ -1,0 +1,19 @@
+{
+  "reasoning": 10,
+  "creative": 8,
+  "constraints": 10,
+  "fib": 10,
+  "json": 10,
+  "breakout": 10,
+  "fractal": 10,
+  "_notes": {
+    "method": "objective checks by harness (fib executed, json schema-validated, sentence count) + headless play-test (playtest.py) + static diagnosis (game_diag.py) + manual output review",
+    "SERVER CHANGE vs 2026-10-13 row": "the ONLY server-side difference is --reasoning-parser qwen3 (vLLM now splits the model's thinking channel into its own field). The leak-era row (qwen3.8-27b-gptq-int4-b70-vllm, composite 8.5) stayed at fib 5 / json 5 because the planning preamble broke 'output only code/JSON'; here every objective check passes UNAIDED with clean content (fib: 60 tokens of code, fib(50) verified; json: pure valid object; constraints: 3/3 sentences).",
+    "reasoning": "riddle correct ('all but 9' -> 9 alive), direct final number, no preamble: 10",
+    "creative": "complete ~150-word story, coherent build, real twist ('the only one left alive'), readable prose; slightly familiar sci-fi setup: 8",
+    "breakout": "single self-contained 729-line doc; play-test: painted, animates, responds to input, 0 JS errors: 10",
+    "fractal": "single self-contained 510-line doc, 3 canvases; play-test: painted, animates, responds, 0 JS errors: 10",
+    "game_diag noise": "bad_const/undef(requestAnimationFrame) flags are scanner false positives — play-test executed real JS with 0 errors",
+    "delta": "HONEST CAPACITY FAILURE — partial badge: three attempts (two under the old 1800s cap, one 74-min run under the new activity watchdog) never produced a complete document; the longest run generated until the model's own 100K output window was exhausted (~40-45 tok/s the whole way, server-verified). The Oct-13 row completed delta only as a 90K-token sample that squeaked inside the same window — it is sampling luck, not headroom; treat delta completions on this stack as marginal. Composite therefore computed over available weights (2 of 3 games)."
+  }
+}

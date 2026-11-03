@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The z² + c Atlas — Mandelbrot &amp; Julia</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b1116; --panel:#141d24; --panel2:#0d141a;
+  --line:rgba(233,228,216,.10); --line2:rgba(233,228,216,.24);
+  --ink:#e9e4d8; --muted:#8fa0a8;
+  --aqua:#57d8c2; --ember:#f2a35c; --gold:#e8c877;
+  --serif:Georgia,'Times New Roman','Iowan Old Style',serif;
+  --sans:system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:ui-monospace,'SF Mono','Cascadia Mono',Menlo,Consolas,monospace;
+}
+html{scroll-behavior:smooth}
+body{
+  background-color:var(--bg);
+  background-image:
+    radial-gradient(1100px 700px at 10% -10%, rgba(87,216,194,.09), transparent 60%),
+    radial-gradient(900px 650px at 108% 112%, rgba(242,163,92,.08), transparent 60%),
+    radial-gradient(rgba(233,228,216,.05) 1px, transparent 1.4px);
+  background-size:auto,auto,26px 26px;
+  background-attachment:fixed;
+  color:var(--ink); font-family:var(--sans); min-height:100vh;
+}
+body::before{content:'';position:fixed;top:0;left:0;right:0;height:3px;z-index:30;
+  background:linear-gradient(90deg,var(--aqua),var(--gold) 50%,var(--ember));}
+::selection{background:rgba(87,216,194,.35)}
+.mono{font-family:var(--mono)}
+
+/* ---------- header ---------- */
+header{max-width:1500px;margin:0 auto;padding:26px 28px 18px;display:flex;
+  justify-content:space-between;align-items:flex-end;gap:22px;flex-wrap:wrap;
+  animation:rise .6s cubic-bezier(.2,.7,.3,1) both;}
+.brand{display:flex;gap:16px;align-items:center}
+.mark{width:48px;height:48px;flex:none;display:grid;place-items:center;border-radius:10px;
+  border:1px solid rgba(232,200,119,.45);background:rgba(232,200,119,.07);
+  font:italic 700 1.05rem var(--serif);color:var(--gold);
+  box-shadow:inset 0 0 18px rgba(232,200,119,.08)}
+h1{font:600 clamp(1.45rem,3vw,2.1rem)/1.15 var(--serif);letter-spacing:.01em}
+h1 em{font-style:italic;color:var(--gold)}
+.tag{color:var(--muted);font-size:.86rem;margin-top:5px;max-width:54ch;line-height:1.5}
+.controls{display:flex;gap:26px;align-items:center;flex-wrap:wrap}
+.ctl{display:flex;align-items:center;gap:10px}
+.ctl-label{font:600 .66rem var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+#iterVal{color:var(--aqua);font-size:.8rem;min-width:3.5ch;text-align:right}
+input[type=range]{-webkit-appearance:none;appearance:none;width:150px;height:4px;border-radius:2px;
+  background:linear-gradient(90deg,var(--aqua),var(--gold),var(--ember));outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;
+  background:var(--ink);border:2px solid #0b1116;box-shadow:0 0 0 1px var(--line2),0 2px 6px rgba(0,0,0,.5)}
+input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--ink);border:2px solid #0b1116}
+input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--aqua),var(--gold),var(--ember))}
+.switch{display:flex;align-items:center;gap:10px;cursor:pointer;position:relative}
+.switch input{position:absolute;opacity:0}
+.track{width:36px;height:20px;border-radius:999px;background:#22303a;border:1px solid var(--line);position:relative;transition:background .25s,border-color .25s}
+.track::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#8a949c;transition:transform .25s,background .25s}
+.switch input:checked + .track{background:rgba(87,216,194,.22);border-color:rgba(87,216,194,.5)}
+.switch input:checked + .track::after{transform:translateX(16px);background:var(--aqua)}
+.switch input:focus-visible + .track{outline:2px solid var(--aqua);outline-offset:2px}
+input[type=range]:focus-visible{outline:2px solid var(--aqua);outline-offset:4px}
+
+/* ---------- layout ---------- */
+main{max-width:1500px;margin:0 auto;padding:6px 28px 10px;display:grid;gap:18px;
+  grid-template-columns:1.15fr 1.15fr .8fr}
+.panel{background:linear-gradient(180deg,var(--panel),var(--panel2));
+  border:1px solid var(--line);border-radius:12px;overflow:hidden;
+  box-shadow:0 10px 30px rgba(0,0,0,.35);
+  transition:transform .3s,border-color .3s,box-shadow .3s}
+.panel:hover{transform:translateY(-3px);border-color:var(--line2);box-shadow:0 16px 42px rgba(0,0,0,.5)}
+#p-mandelbrot{animation:rise .7s .05s cubic-bezier(.2,.7,.3,1) both}
+#p-julia{animation:rise .7s .18s cubic-bezier(.2,.7,.3,1) both}
+#p-param{animation:rise .7s .32s cubic-bezier(.2,.7,.3,1) both}
+@keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+
+.panel-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;
+  padding:14px 16px 12px;border-bottom:1px solid var(--line)}
+.ph-left{display:flex;gap:12px;align-items:flex-start}
+.idx{font:700 .72rem var(--mono);padding:3px 8px;border-radius:6px;border:1px solid;margin-top:3px}
+#p-mandelbrot .idx{color:var(--aqua);border-color:rgba(87,216,194,.4)}
+#p-julia .idx{color:var(--ember);border-color:rgba(242,163,92,.4)}
+#p-param .idx{color:var(--gold);border-color:rgba(232,200,119,.4)}
+.panel h2{font:600 1.28rem/1.2 var(--serif)}
+.sub{font:500 .68rem var(--mono);color:var(--muted);letter-spacing:.06em;margin-top:4px}
+.readout{font:500 .68rem/1.65 var(--mono);color:var(--muted);text-align:right;max-width:48%}
+
+.stage{position:relative;aspect-ratio:4/3;background:#0a0f14;overflow:hidden}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:none}
+.stage canvas.grabbing{cursor:grabbing}
+.stage::after{content:'';position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:radial-gradient(130% 105% at 50% 42%, transparent 62%, rgba(4,8,12,.42))}
+.hint{position:absolute;left:0;right:0;bottom:8px;z-index:2;text-align:center;pointer-events:none;
+  font:500 .62rem var(--mono);letter-spacing:.14em;text-transform:uppercase;color:rgba(233,228,216,.42)}
+.stage-param{aspect-ratio:1/1;width:100%;max-width:440px;margin:0 auto}
+
+.marker{position:absolute;z-index:2;width:20px;height:20px;margin:-10px 0 0 -10px;
+  border:2px solid var(--gold);border-radius:50%;pointer-events:none;
+  box-shadow:0 0 14px rgba(232,200,119,.45)}
+.marker::after{content:'';position:absolute;inset:6px;background:var(--gold);border-radius:50%}
+.marker .ring{position:absolute;inset:-7px;border:1px solid rgba(232,200,119,.55);border-radius:50%;
+  animation:pulse 2.4s ease-out infinite}
+@keyframes pulse{0%{transform:scale(.55);opacity:.9}70%{opacity:.25}100%{transform:scale(1.7);opacity:0}}
+
+.c-readout{padding:12px 16px 4px;text-align:center;font-family:var(--mono);font-size:.85rem;color:var(--gold);letter-spacing:.02em}
+.presets{display:flex;flex-wrap:wrap;gap:8px;padding:10px 16px 16px}
+.chip{font:500 .72rem var(--mono);color:var(--ink);background:rgba(232,200,119,.06);
+  border:1px solid rgba(232,200,119,.35);padding:5px 12px;border-radius:999px;cursor:pointer;
+  transition:background .2s,border-color .2s,transform .2s,color .2s}
+.chip:hover{background:rgba(232,200,119,.16);border-color:var(--gold);transform:translateY(-1px)}
+.chip:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.chip.active{background:var(--gold);color:#221a08;border-color:var(--gold);font-weight:700}
+
+/* ---------- footer ---------- */
+footer{max-width:1500px;margin:16px auto 0;padding:20px 28px 34px;border-top:1px solid var(--line);
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px 30px}
+footer h4{font:700 .64rem var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--gold);margin-bottom:6px}
+footer p{font-size:.8rem;line-height:1.55;color:var(--muted)}
+footer i{font-family:var(--serif);color:var(--ink)}
+footer code{font-family:var(--mono);font-size:.9em;color:var(--aqua)}
+
+@media (max-widthpx){
+  main{grid-template-columns:1fr 1fr}
+  #p-param{grid-column:1/-1}
+}
+@media (max-width:760px){
+  main{grid-template-columns:1fr;padding:16px 14px}
+  header,footer{padding-left:14px;padding-right:14px}
+  .readout{max-width:100%;text-align:left}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="mark">z²+c</div>
+    <div>
+      <h1>The <em>z² + c</em> Atlas</h1>
+      <p class="tag">Mandelbrot &amp; Julia — one quadratic map, two questions. Every pixel is computed live in plain JavaScript; no libraries, no WebGL.</p>
+    </div>
+  </div>
+  <div class="controls">
+    <label class="ctl">
+      <span class="ctl-label">Iterations</span>
+      <input type="range" id="iterSlider" min="80" max="1200" step="20" value="320" aria-label="Maximum iterations">
+      <span class="mono" id="iterVal">320</span>
+    </label>
+    <label class="switch">
+      <input type="checkbox" id="driftToggle" checked>
+      <span class="track" aria-hidden="true"></span>
+      <span class="ctl-label">Color drift</span>
+    </label>
+  </div>
+</header>
+
+<noscript><p style="padding:0 28px;color:#f2a35c">JavaScript is required to compute the fractals.</p></noscript>
+
+<main>
+  <section class="panel" id="p-mandelbrot" aria-label="Mandelbrot set">
+    <div class="panel-head">
+      <div class="ph-left">
+        <span class="idx">01</span>
+        <div>
+          <h2>The Mandelbrot Set</h2>
+          <p class="sub">each pixel is a c &nbsp;·&nbsp; z₀ = 0</p>
+        </div>
+      </div>
+      <div class="readout" id="ro-mandelbrot">x [−2.200, 1.000] · y [−1.200, 1.200] · N 320</div>
+    </div>
+    <div class="stage">
+      <canvas id="cv-mandelbrot" aria-label="Mandelbrot set, interactive"></canvas>
+      <div class="hint">scroll to zoom · drag to pan · double-click to reset</div>
+    </div>
+  </section>
+
+  <section class="panel" id="p-julia" aria-label="Julia set">
+    <div class="panel-head">
+      <div class="ph-left">
+        <span class="idx">02</span>
+        <div>
+          <h2>The Julia Set</h2>
+          <p class="sub">each pixel is a z₀ &nbsp;·&nbsp; c is fixed</p>
+        </div>
+      </div>
+      <div class="readout" id="ro-julia">c = −0.8000 + 0.1560i · x [−1.600, 1.600] · N 320</div>
+    </div>
+    <div class="stage">
+      <canvas id="cv-julia" aria-label="Julia set, interactive"></canvas>
+      <div class="hint">scroll to zoom · drag to pan · c chosen in panel 03</div>
+    </div>
+  </section>
+
+  <section class="panel" id="p-param" aria-label="Julia parameter selection">
+    <div class="panel-head">
+      <div class="ph-left">
+        <span class="idx">03</span>
+        <div>
+          <h2>Choose c</h2>
+          <p class="sub">the parameter plane · click to set c</p>
+        </div>
+      </div>
+    </div>
+    <div class="stage stage-param">
+      <canvas id="cv-param" aria-label="Parameter plane: click to choose the Julia constant"></canvas>
+      <div class="marker" id="marker"><span class="ring"></span></div>
+      <div class="hint">click or drag to move c</div>
+    </div>
+    <div class="c-readout" id="ro-c">c = −0.8000 + 0.1560i</div>
+    <div class="presets">
+      <button class="chip active" data-c="-0.8,0.156">Classic</button>
+      <button class="chip" data-c="-0.75,0.1">Spiral</button>
+      <button class="chip" data-c="-0.7269,0.1889">Dragon</button>
+      <button class="chip" data-c="-0.39,0.5815">Rabbit</button>
+      <button class="chip" data-c="0,1">Dendrite</button>
+      <button class="chip" data-c="-0.835,-0.232">Airplane</button>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div><h4>The map</h4><p>Everything on this page is <i>z ↦ z² + c</i> — the simplest non-linear map in the complex plane. Orbits that stay bounded draw the sets; orbits that escape draw the color.</p></div>
+  <div><h4>Mandelbrot</h4><p>Each pixel is a candidate <i>c</i>. Start at <i>z₀ = 0</i> and iterate <i>z ← z² + c</i>. If |<i>z</i>| ever exceeds 2 the orbit diverges to ∞; if it never does, the pixel belongs to the set.</p></div>
+  <div><h4>Julia</h4><p>Now <i>c</i> is fixed and each pixel is a starting point <i>z₀</i>. Every <i>c</i> has its own Julia set — and the Mandelbrot set is the map of exactly those <i>c</i> whose Julia set is connected.</p></div>
+  <div><h4>Coloring</h4><p>Escape time, smoothed: <i>n + 1 − log₂ log₂|z|</i>, sampled from a cyclic palette that can drift slowly through its own spectrum.</p></div>
+  <div><h4>Engine</h4><p>No libraries, no WebGL — plain JavaScript arithmetic over a <code>canvas</code> ImageData buffer. Roughly 400,000 pixels per panel, recomputed live as you pan, zoom, or move <i>c</i>.</p></div>
+</footer>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const LUTN = 1024, MASK = LUTN - 1;
+let dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+
+/* ---------- cyclic palettes (deep-sea for Mandelbrot, ember for Julia) ---------- */
+const PALETTES = {
+  aqua:  [[0,6,10,18],[.14,10,44,68],[.30,16,92,108],[.46,44,158,148],[.60,118,204,168],[.72,214,214,140],[.82,248,234,168],[.92,255,250,235],[1,6,10,18]],
+  ember: [[0,12,7,12],[.14,54,14,34],[.32,128,34,44],[.50,204,78,48],[.66,240,148,68],[.78,252,198,108],[.90,255,240,198],[1,12,7,12]]
+};
+function buildLUT(stops){
+  const lut = new Uint8Array(LUTN * 3);
+  for (let i = 0; i < LUTN; i++){
+    const t = i / (LUTN - 1);
+    let s = 0;
+    while (s < stops.length - 2 && t > stops[s+1][0]) s++;
+    const a = stops[s], b = stops[s+1];
+    const f = (t - a[0]) / (b[0] - a[0] || 1);
+    lut[i*3]   = a[1] + (b[1]-a[1])*f;
+    lut[i*3+1] = a[2] + (b[2]-a[2])*f;
+    lut[i*3+2] = a[3] + (b[3]-a[3])*f;
+  }
+  return lut;
+}
+const LUTS = { aqua: buildLUT(PALETTES.aqua), ember: buildLUT(PALETTES.ember) };
+
+/* ---------- state ---------- */
+let maxIter = 320;
+let phase = 0;
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let driftOn = !reduceMotion;
+
+function makeFractal(kind, canvas, view, lut, c){
+  return { kind, canvas, ctx:null, view, home:{...view}, lut,
+    c: c ? {...c} : {re:0, im:0},
+    w:0, h:0, t:null, img:null, pending:null, pendingIter:0, _settle:0,
+    readoutEl:null, interior:[lut[0], lut[1], lut[2]] };
+}
+const mandelbrot = makeFractal('mandelbrot', $('#cv-mandelbrot'), {cx:-0.6, cy:0, scale:3.2}, LUTS.aqua);
+const julia      = makeFractal('julia',      $('#cv-julia'),      {cx:0,    cy:0, scale:3.2}, LUTS.ember, {re:-0.8, im:0.156});
+const param      = makeFractal('mandelbrot', $('#cv-param'),      {cx:-0.5, cy:0, scale:3.0}, LUTS.aqua);
+const fractals = [mandelbrot, julia, param];
+mandelbrot.readoutEl = $('#ro-mandelbrot');
+julia.readoutEl      = $('#ro-julia');
+
+/* ---------- sizing ---------- */
+function sizeFractal(f){
+  const r = f.canvas.parentElement.getBoundingClientRect();
+  f.w = Math.max(8, Math.round(r.width  * dpr));
+  f.h = Math.max(8, Math.round(r.height * dpr));
+  f.canvas.width = f.w; f.canvas.height = f.h;
+  f.ctx = f.canvas.getContext('2d');
+  f.t   = new Uint8Array(f.w * f.h);
+  f.img = f.ctx.createImageData(f.w, f.h);
+}
+
+/* ---------- the math: z <- z^2 + c, escape radius 2 ---------- */
+function smooth(n, zr, zi, maxIter){
+  const logZn = Math.log(zr*zr + zi*zi) * 0.5;      // ln|z|
+  const nu = n + 1 - Math.log2(logZn);              // smooth escape time
+  const v = nu / maxIter * 255;
+  if (v >= 255) return 255;
+  if (v < 1)   return 1;
+  return (v | 0) + 1;                                // 1..255 (0 = interior)
+}
+function compute(f, maxIter){
+  const {w, h, t, view} = f;
+  const xstep = view.scale / w, ystep = view.scale / h;
+  const cx = view.cx, cy = view.cy;
+  let p = 0;
+  if (f.kind === 'mandelbrot'){                     // c is the pixel, z0 = 0
+    for (let py = 0; py < h; py++){
+      const cr = cy + (0.5 - py) * ystep;
+      for (let px = 0; px < w; px++){
+        const ci = cx + (px - 0.5) * xstep;
+        let zr = 0, zi = 0, n = 0;
+        while (n < maxIter && zr*zr + zi*zi <= 4){
+          const nzr = zr*zr - zi*zi + ci;
+          zi = 2*zr*zi + cr;
+          zr = nzr; n++;
+        }
+        t[p++] = n >= maxIter ? 0 : smooth(n, zr, zi, maxIter);
+      }
+    }
+  } else {                                          // Julia: z0 is the pixel, c fixed
+    const cr = f.c.re, ci = f.c.im;
+    for (let py = 0; py < h; py++){
+      const zi0 = cy + (0.5 - py) * ystep;
+      for (let px = 0; px < w; px++){
+        let zr = cx + (px - 0.5) * xstep, zi = zi0, n = 0;
+        while (n < maxIter && zr*zr + zi*zi <= 4){
+          const nzr = zr*zr - zi*zi + cr;
+          zi = 2*zr*zi + ci;
+          zr = nzr; n++;
+        }
+        t[p++] = n >= maxIter ? 0 : smooth(n, zr, zi, maxIter);
+      }
+    }
+  }
+}
+function colorize(f, ph){
+  if (!f.t || !f.img) return;
+  const {w, h, t, lut, interior} = f;
+  const d = f.img.data;
+  const shift = ph & MASK;
+  for (let p = 0, i = 0; p < w*h; p++, i += 4){
+    const tv = t[p];
+    if (tv === 0){ d[i]=interior[0]; d[i+1]=interior[1]; d[i+2]=interior[2]; }
+    else {
+      const li = (((tv - 1) << 2) + shift) & MASK;
+      d[i] = lut[li*3]; d[i+1] = lut[li*3+1]; d[i+2] = lut[li*3+2];
+    }
+    d[i+3] = 255;
+  }
+  f.ctx.putImageData(f.img, 0, 0);
+}
+
+/* ---------- rendering pipeline ---------- */
+function requestRender(f, q){
+  f.pending = q;
+  f.pendingIter = q === 'live' ? Math.min(maxIter, 90) : maxIter;
+  clearTimeout(f._settle);
+  if (q === 'live' && f !== param)
+    f._settle = setTimeout(() => requestRender(f, 'full'), 300);
+}
+
+const fmt = (x, d = 3) => x.toFixed(d).replace(/-/g, '−');
+function cStr(c, d = 4){
+  return `c = ${fmt(c.re, d)} ${c.im < 0 ? '−' : '+'} ${fmt(Math.abs(c.im), d)}i`;
+}
+function updateReadout(f){
+  if (!f.readoutEl) return;
+  const v = f.view, ar = f.h / f.w;
+  const xr = v.scale / 2, yr = v.scale / 2 * ar;
+  if (f.kind === 'mandelbrot')
+    f.readoutEl.textContent = `x [${fmt(v.cx-xr)}, ${fmt(v.cx+xr)}] · y [${fmt(v.cy-yr)}, ${fmt(v.cy+yr)}] · N ${maxIter}`;
+  else
+    f.readoutEl.textContent = `${cStr(f.c)} · x [${fmt(v.cx-xr)}, ${fmt(v.cx+xr)}] · N ${maxIter}`;
+}
+
+let lastTs = 0;
+function frame(ts){
+  if (driftOn){
+    const dt = lastTs ? Math.min(ts - lastTs, 100) : 16;
+    phase = (phase + dt * 0.024) & MASK;            // full palette cycle ≈ 43 s
+  }
+  lastTs = ts;
+  for (const f of fractals){
+    if (f.pending){
+      f.pending = null;
+      compute(f, f.pendingIter);
+      colorize(f, phase);
+      if (f.readoutEl) updateReadout(f);
+    }
+  }
+  if (driftOn) for (const f of fractals) colorize(f, phase);
+  requestAnimationFrame(frame);
+}
+
+/* ---------- pan / zoom on the two main panels ---------- */
+function attachNav(f){
+  const cv = f.canvas;
+  let drag = null;
+  cv.addEventListener('pointerdown', e => {
+    cv.setPointerCapture(e.pointerId);
+    drag = { x: e.clientX, y: e.clientY, cx: f.view.cx, cy: f.view.cy };
+    cv.classList.add('grabbing');
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const r = cv.getBoundingClientRect();
+    f.view.cx = drag.cx - (e.clientX - drag.x) * f.view.scale / r.width;
+    f.view.cy = drag.cy + (e.clientY - drag.y) * f.view.scale / r.height;
+    requestRender(f, 'live');
+  });
+  const end = () => { if (drag){ drag = null; cv.classList.remove('grabbing'); requestRender(f, 'full'); } };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+  cv.addEventListener('wheel', e => {
+    e.preventDefault();
+    const r = cv.getBoundingClientRect();
+    const mx = e.clientX - r.left, my = e.clientY - r.top;
+    const v = f.view;
+    const xr = v.cx + (mx - r.width/2)  * v.scale / r.width;
+    const yi = v.cy + (r.height/2 - my) * v.scale / r.height;
+    v.scale = Math.min(Math.max(v.scale * Math.exp(e.deltaY * 0.0016), 1e-8), 10);
+    v.cx = xr - (mx - r.width/2)  * v.scale / r.width;
+    v.cy = yi - (r.height/2 - my) * v.scale / r.height;
+    requestRender(f, 'live');
+  }, { passive:false });
+  cv.addEventListener('dblclick', () => { Object.assign(f.view, f.home); requestRender(f, 'full'); });
+}
+attachNav(mandelbrot);
+attachNav(julia);
+
+/* ---------- parameter plane: click to choose c ---------- */
+const marker = $('#marker'), roC = $('#ro-c');
+function moveMarker(){
+  const v = param.view;
+  marker.style.left = (julia.c.re - (v.cx - v.scale/2)) / v.scale * 100 + '%';
+  marker.style.top  = (v.cy + v.scale/2 - julia.c.im) / v.scale * 100 + '%';
+}
+const chips = [...document.querySelectorAll('.chip')];
+const clearChips = () => chips.forEach(c => c.classList.remove('active'));
+function setCFromEvent(e){
+  const r = param.canvas.getBoundingClientRect();
+  const px = (e.clientX - r.left) / r.width;
+  const py = (e.clientY - r.top)  / r.height;
+  const v = param.view;
+  julia.c.re = v.cx - v.scale/2 + px * v.scale;
+  julia.c.im = v.cy + v.scale/2 - py * v.scale;
+  moveMarker();
+  roC.textContent = cStr(julia.c);
+  updateReadout(julia);
+  clearChips();
+}
+let pdrag = false;
+const pcv = param.canvas;
+pcv.addEventListener('pointerdown', e => { pcv.setPointerCapture(e.pointerId); pdrag = true; setCFromEvent(e); requestRender(julia, 'live'); });
+pcv.addEventListener('pointermove', e => { if (pdrag){ setCFromEvent(e); requestRender(julia, 'live'); } });
+const pend = () => { if (pdrag){ pdrag = false; requestRender(julia, 'full'); } };
+pcv.addEventListener('pointerup', pend);
+pcv.addEventListener('pointercancel', pend);
+chips.forEach(ch => ch.addEventListener('click', () => {
+  const [re, im] = ch.dataset.c.split(',').map(Number);
+  julia.c.re = re; julia.c.im = im;
+  clearChips(); ch.classList.add('active');
+  moveMarker();
+  roC.textContent = cStr(julia.c);
+  updateReadout(julia);
+  requestRender(julia, 'full');
+}));
+
+/* ---------- global controls ---------- */
+const iterSlider = $('#iterSlider'), iterVal = $('#iterVal');
+iterSlider.addEventListener('input', () => {
+  maxIter = +iterSlider.value; iterVal.textContent = maxIter;
+  requestRender(mandelbrot, 'live'); requestRender(julia, 'live');
+});
+iterSlider.addEventListener('change', () => {
+  requestRender(mandelbrot, 'full'); requestRender(julia, 'full'); requestRender(param, 'full');
+});
+const driftToggle = $('#driftToggle');
+driftToggle.checked = driftOn;
+driftToggle.addEventListener('change', () => { driftOn = driftToggle.checked; });
+
+/* ---------- resize ---------- */
+let rT = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(rT);
+  rT = setTimeout(() => {
+    dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    for (const f of fractals){ sizeFractal(f); requestRender(f, 'full'); }
+    moveMarker();
+  }, 200);
+});
+
+/* ---------- boot: quick low-detail pass, then full quality, staggered ---------- */
+for (const f of fractals) sizeFractal(f);
+moveMarker();
+updateReadout(mandelbrot); updateReadout(julia);
+roC.textContent = cStr(julia.c);
+for (const f of fractals) requestRender(f, 'live');
+[mandelbrot, julia, param].forEach((f, i) => {
+  clearTimeout(f._settle);
+  f._settle = setTimeout(() => requestRender(f, 'full'), 400 + i * 350);
+});
+requestAnimationFrame(frame);
+
+/* free the entrance animation so hover transforms work afterwards */
+document.querySelectorAll('.panel, header').forEach(el =>
+  el.addEventListener('animationend', () => { el.style.animation = 'none'; }, { once:true }));
+})();
+</script>
+</body>
+</html>
