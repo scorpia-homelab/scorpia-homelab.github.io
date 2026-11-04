@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mandelbrot &amp; Julia — z ↦ z² + c</title>
+<style>
+:root{
+  --bg:#070b13; --panel:#0f1626; --panel2:#131c30;
+  --line:#1d2942; --line2:#31456b;
+  --ink:#e9e3d4; --muted:#8fa0bd; --faint:#5d6c8c;
+  --amber:#f2a33c; --amber2:#ffd27a;
+  --cyan:#45d6c4; --cyan2:#9ff0e4;
+  --serif:Georgia,'Times New Roman','Palatino Linotype',serif;
+  --sans:system-ui,-apple-system,'Segoe UI','Helvetica Neue',sans-serif;
+  --mono:ui-monospace,'SF Mono','Cascadia Mono','JetBrains Mono',Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);min-height:100vh;overflow-x:hidden;-webkit-tap-highlight-color:transparent}
+
+/* ---------- ambient background: complex-plane grid + drifting glows ---------- */
+.bg{position:fixed;inset:0;z-index:-2;background:linear-gradient(180deg,#0a101d 0%,#070b13 55%,#05080f 100%)}
+.bg::before{content:'';position:absolute;inset:0;
+  background:
+    repeating-linear-gradient(0deg,rgba(140,160,200,.045) 0 1px,transparent 1px 56px),
+    repeating-linear-gradient(90deg,rgba(140,160,200,.045) 0 1px,transparent 1px 56px);
+  -webkit-mask-image:radial-gradient(1300px 900px at 50% 25%,#000 30%,transparent 78%);
+  mask-image:radial-gradient(1300px 900px at 50% 25%,#000 30%,transparent 78%);
+}
+.glow{position:fixed;z-index:-1;width:64vmax;height:64vmax;border-radius:50%;filter:blur(70px);pointer-events:none;will-change:transform}
+.glow.warm{top:-24vmax;left:-14vmax;background:radial-gradient(circle,rgba(242,163,60,.13),transparent 62%);animation:drift1 26s ease-in-out infinite alternate}
+.glow.cool{bottom:-28vmax;right:-16vmax;background:radial-gradient(circle,rgba(69,214,196,.11),transparent 62%);animation:drift2 34s ease-in-out infinite alternate}
+@keyframes drift1{to{transform:translate(7vmax,5vmax)}}
+@keyframes drift2{to{transform:translate(-6vmax,-5vmax)}}
+
+.wrap{max-width:1480px;margin:0 auto;padding:0 26px}
+
+/* ---------- header ---------- */
+header{display:flex;justify-content:space-between;align-items:flex-end;gap:36px;padding:36px 0 22px;flex-wrap:wrap}
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.24em;color:var(--amber);text-transform:uppercase;margin-bottom:12px}
+h1{font-family:var(--serif);font-weight:400;font-size:clamp(34px,4.8vw,56px);line-height:1.02;margin:0 0 14px;letter-spacing:-.01em}
+h1 .amp{color:var(--amber);font-style:italic}
+.lede{max-width:58ch;color:var(--muted);font-size:15px;line-height:1.6;margin:0}
+.formula{padding-left:24px;border-left:2px solid var(--line2)}
+.f-kicker{font-family:var(--mono);font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--faint);margin-bottom:8px}
+.f-main{font-family:var(--serif);font-style:italic;font-size:clamp(26px,3.4vw,40px);color:var(--ink)}
+.f-sub{font-family:var(--mono);font-size:13px;color:var(--cyan);margin-top:10px}
+
+/* ---------- controls ---------- */
+.controls{display:flex;gap:30px;flex-wrap:wrap;align-items:flex-end;padding:16px 0 22px;border-top:1px solid var(--line);user-select:none}
+.group{display:flex;flex-direction:column;gap:9px}
+.glabel{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);display:flex;gap:8px;align-items:baseline}
+.glabel output{color:var(--amber);font-size:12px;letter-spacing:0}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{font-family:var(--sans);background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:7px 12px;cursor:pointer;display:flex;flex-direction:column;align-items:flex-start;gap:2px;transition:transform .18s,border-color .18s,background .18s,box-shadow .18s}
+.chip b{font-size:13px;font-weight:600}
+.chip small{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+.chip:hover{transform:translateY(-2px);border-color:var(--line2);box-shadow:0 6px 18px rgba(0,0,0,.35)}
+.chip.active{border-color:var(--cyan);background:linear-gradient(180deg,rgba(69,214,196,.14),rgba(69,214,196,.04))}
+.chip.active small{color:var(--cyan)}
+.swatches{display:flex;gap:8px;flex-wrap:wrap}
+.swatch{display:flex;align-items:center;gap:7px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:5px 13px 5px 6px;cursor:pointer;color:var(--muted);font-size:12px;transition:transform .18s,border-color .18s,color .18s}
+.swatch i{width:16px;height:16px;border-radius:50%;display:block}
+.swatch:hover{transform:translateY(-2px);border-color:var(--line2);color:var(--ink)}
+.swatch.active{border-color:var(--amber);color:var(--ink)}
+.btn{background:transparent;border:1px solid var(--line2);color:var(--ink);border-radius:8px;padding:9px 18px;font-size:13px;cursor:pointer;transition:transform .18s,border-color .18s,color .18s}
+.btn:hover{border-color:var(--amber);color:var(--amber2);transform:translateY(-1px)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:200px;height:22px;background:transparent;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:3px;background:linear-gradient(90deg,var(--amber),rgba(242,163,60,.15));border-radius:2px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--amber);margin-top:-5.5px;border:2px solid #0a0f1a;box-shadow:0 0 10px rgba(242,163,60,.6);transition:transform .15s}
+input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.25)}
+input[type=range]::-moz-range-track{height:3px;background:rgba(242,163,60,.3);border-radius:2px}
+input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:var(--amber);border:2px solid #0a0f1a}
+
+/* ---------- panels ---------- */
+main{display:grid;grid-template-columns:1fr 1fr;gap:22px;padding-bottom:12px}
+.panel{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 18px 50px rgba(0,0,0,.45);transition:border-color .25s;animation:rise .8s cubic-bezier(.22,.7,.25,1) both}
+.panel:hover{border-color:var(--line2)}
+.panel:nth-child(2){animation-delay:.12s}
+@keyframes rise{from{opacity:0;transform:translateY(22px)}}
+.panel-head{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.panel.m .panel-head{box-shadow:inset 0 2px 0 rgba(242,163,60,.55)}
+.panel.j .panel-head{box-shadow:inset 0 2px 0 rgba(69,214,196,.55)}
+.ph-left{display:flex;align-items:center;gap:13px}
+.ph-index{font-family:var(--mono);font-size:12px}
+.panel.m .ph-index{color:var(--amber)}
+.panel.j .ph-index{color:var(--cyan)}
+h2{font-family:var(--serif);font-weight:400;font-size:23px;margin:0}
+.ph-sub{margin:3px 0 0;font-size:11.5px;color:var(--muted);font-family:var(--mono)}
+.ph-right{display:flex;align-items:center;gap:14px}
+.ph-hint{font-size:11px;color:var(--faint);text-align:right;line-height:1.55}
+.c-chip{font-family:var(--mono);font-size:12px;color:var(--cyan);background:rgba(69,214,196,.08);border:1px solid rgba(69,214,196,.3);padding:5px 11px;border-radius:7px;white-space:nowrap}
+.stage{position:relative;aspect-ratio:4/3;background:#000;user-select:none;touch-action:none}
+.panel.m .stage{cursor:crosshair}
+.panel.j .stage{cursor:grab}
+.stage.dragging{cursor:grabbing !important}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.stage canvas.ov{pointer-events:none;z-index:1}
+.stage::after{content:'';position:absolute;inset:0;z-index:2;pointer-events:none;background:radial-gradient(120% 90% at 50% 40%,transparent 55%,rgba(0,0,0,.35) 100%)}
+.marker{position:absolute;left:0;top:0;z-index:3;pointer-events:none;transition:opacity .25s}
+.marker .dot{position:absolute;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 2px rgba(10,14,22,.9),0 0 14px rgba(242,163,60,.8)}
+.marker .ring{position:absolute;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;border:1.5px solid var(--amber);animation:pulse 2.2s ease-out infinite}
+@keyframes pulse{0%{transform:scale(1);opacity:.9}70%{transform:scale(3.4);opacity:0}100%{opacity:0}}
+.tip{position:absolute;left:0;top:0;z-index:4;pointer-events:none;opacity:0;font-family:var(--mono);font-size:11px;color:var(--amber2);background:rgba(10,14,22,.88);border:1px solid rgba(242,163,60,.35);padding:4px 9px;border-radius:6px;white-space:nowrap;transition:opacity .15s}
+.panel-foot{display:flex;justify-content:space-between;gap:12px;padding:10px 18px;border-top:1px solid var(--line);font-family:var(--mono);font-size:11px;color:var(--faint);flex-wrap:wrap}
+.panel-foot .mode{color:var(--muted)}
+
+/* ---------- footer ---------- */
+footer{padding:26px 0 44px;display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;color:var(--faint);font-size:12.5px;line-height:1.65}
+footer .fact{max-width:62ch;color:var(--muted)}
+footer .fact em{color:var(--ink);font-style:italic;font-family:var(--serif);font-size:14.5px}
+footer .tech{max-width:44ch;text-align:right}
+
+@media (max-width:980px){
+  main{grid-template-columns:1fr}
+  header{align-items:flex-start;flex-direction:column}
+  .formula{padding-left:0;border-left:0;border-top:1px solid var(--line);padding-top:14px;width:100%}
+  footer .tech{text-align:left}
+}
+@media (prefers-reduced-motion:reduce){
+  .glow,.marker .ring{animation:none}
+  .panel{animation:none}
+}
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<div class="glow warm"></div>
+<div class="glow cool"></div>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="kicker">Complex dynamics · escape-time renderer</div>
+      <h1>Mandelbrot <span class="amp">&amp;</span> Julia</h1>
+      <p class="lede">One quadratic map, two portraits. On the left the constant <i>c</i> wanders across the plane while the seed stays fixed at zero — the Mandelbrot set. On the right, <i>c</i> is frozen and every point of the plane is a seed — a Julia set. Click the left panel and the right one answers.</p>
+    </div>
+    <div class="formula">
+      <div class="f-kicker">the map</div>
+      <div class="f-main">z ↦ z² + c</div>
+      <div class="f-sub" id="cReadout">c = −0.8000 + 0.1560 i</div>
+    </div>
+  </header>
+
+  <section class="controls">
+    <div class="group">
+      <span class="glabel">Julia parameter c</span>
+      <div class="chips" id="presets"></div>
+    </div>
+    <div class="group">
+      <span class="glabel">Iteration depth <output id="iterOut">800</output></span>
+      <input type="range" id="iter" min="100" max="2000" step="50" value="800" aria-label="Iteration depth">
+    </div>
+    <div class="group">
+      <span class="glabel">Palette</span>
+      <div class="swatches" id="swatches"></div>
+    </div>
+    <div class="group">
+      <span class="glabel">Session</span>
+      <button class="btn" id="reset" type="button">Reset views &amp; c</button>
+    </div>
+  </section>
+
+  <main>
+    <section class="panel m">
+      <div class="panel-head">
+        <div class="ph-left">
+          <span class="ph-index">01</span>
+          <div>
+            <h2>Mandelbrot Set</h2>
+            <p class="ph-sub">c varies per pixel · z₀ = 0</p>
+          </div>
+        </div>
+        <div class="ph-right">
+          <span class="ph-hint">click — seed the Julia set<br>scroll — zoom · drag — pan</span>
+        </div>
+      </div>
+      <div class="stage" id="stageM">
+        <canvas id="cvM" aria-label="Mandelbrot set, interactive"></canvas>
+        <canvas class="ov" id="cvMOv"></canvas>
+        <div class="marker" id="markerM"><span class="ring"></span><span class="dot"></span></div>
+        <div class="tip" id="tipM"></div>
+      </div>
+      <div class="panel-foot" id="footM"><span>rendering…</span></div>
+    </section>
+
+    <section class="panel j">
+      <div class="panel-head">
+        <div class="ph-left">
+          <span class="ph-index">02</span>
+          <div>
+            <h2>Julia Set</h2>
+            <p class="ph-sub">z₀ varies per pixel · c fixed</p>
+          </div>
+        </div>
+        <div class="ph-right">
+          <span class="c-chip" id="cChip">c = −0.8000 + 0.1560 i</span>
+          <span class="ph-hint">scroll — zoom<br>drag — pan</span>
+        </div>
+      </div>
+      <div class="stage" id="stageJ">
+        <canvas id="cvJ" aria-label="Julia set, interactive"></canvas>
+      </div>
+      <div class="panel-foot" id="footJ"><span>rendering…</span></div>
+    </section>
+  </main>
+
+  <footer>
+    <p class="fact"><em>Every point of the Mandelbrot set is a seed.</em> Click anywhere on the left panel and the right panel becomes that point's Julia set — the two views are one family, seen from opposite directions.</p>
+    <p class="tech">escape-time algorithm · zₙ₊₁ = zₙ² + c · continuous coloring via 2048-entry LUT · progressive &lt;canvas&gt; rendering · zero dependencies</p>
+  </footer>
+</div>
+
+<noscript><p style="padding:20px">This page needs JavaScript to render the fractals.</p></noscript>
+
+<script>
+'use strict';
+/* ================= palettes (each loops: first stop === last stop) ================= */
+const LUTLEN = 2048, LUTMASK = LUTLEN - 1;
+const lut = new Uint8Array(LUTLEN * 3);
+const PALETTES = {
+  ember:       { label:'Ember',       stops:['#0d0502','#4a1604','#a63c08','#f07f13','#ffc857','#fff3c4','#0d0502'] },
+  abyss:       { label:'Abyss',       stops:['#020a10','#073042','#0c6b74','#2fd4c9','#a9fff1','#020a10'] },
+  ultramarine: { label:'Ultramarine', stops:['#04060f','#0d1b4d','#1e4fd8','#5aa0ff','#cfe4ff','#04060f'] },
+  spectrum:    { label:'Spectrum',    stops:['#ff0000','#ffff00','#00ff00','#00ffff','#0000ff','#ff00ff','#ff0000'] },
+  graphite:    { label:'Graphite',    stops:['#000000','#4a4a4a','#8f8f8f','#d9d9d9','#ffffff','#8f8f8f','#000000'] },
+};
+let paletteKey = 'ember';
+function hexToRgb(h){ const n = parseInt(h.slice(1),16); return [(n>>16)&255,(n>>8)&255,n&255]; }
+function buildLUT(key){
+  const cols = PALETTES[key].stops.map(hexToRgb);
+  for (let i = 0; i < LUTLEN; i++){
+    const t = i / (LUTLEN - 1) * (cols.length - 1);
+    const k = Math.min(cols.length - 2, t | 0), f = t - k;
+    const a = cols[k], b = cols[k+1];
+    lut[i*3]   = a[0] + (b[0]-a[0])*f;
+    lut[i*3+1] = a[1] + (b[1]-a[1])*f;
+    lut[i*3+2] = a[2] + (b[2]-a[2])*f;
+  }
+}
+
+/* ================= state ================= */
+const state = { c:{ re:-0.8, im:0.156 }, maxIter:800 };
+const PRESETS = [
+  { name:'Spiral',      re:-0.8,    im: 0.156  },
+  { name:'Dendrite',    re: 0.285,  im:-0.012  },
+  { name:'Dust',        re:-0.4,    im: 0.6    },
+  { name:'Quasicircle', re: 0.355,  im: 0.355  },
+  { name:'Sierpiński',  re:-0.7269, im: 0.1889 },
+];
+const clamp = (v,a,b) => Math.min(b, Math.max(a, v));
+function fmtC(re, im, d){
+  d = d || 4;
+  return (re < 0 ? '−' : '') + Math.abs(re).toFixed(d) + ' ' + (im < 0 ? '−' : '+') + ' ' + Math.abs(im).toFixed(d) + ' i';
+}
+
+/* ================= panels ================= */
+function makePanel(canvasId, type, defView, footId){
+  const canvas = document.getElementById(canvasId);
+  const panel = {
+    type, canvas, ctx: canvas.getContext('2d'),
+    stage: canvas.parentElement, foot: document.getElementById(footId),
+    view: Object.assign({}, defView), defView: Object.assign({}, defView),
+    offFast:null, offFull:null, raf:0, token:0, fullTimer:0, k:1, moved:0,
+  };
+  if (type === 'mandelbrot'){
+    panel.overlay = document.getElementById(canvasId + 'Ov');
+    panel.octx = panel.overlay.getContext('2d');
+    panel.marker = document.getElementById('markerM');
+    panel.tip = document.getElementById('tipM');
+  }
+  return panel;
+}
+const mandel = makePanel('cvM','mandelbrot',{ cx:-0.75, cy:0, halfW:1.55 }, 'footM');
+const julia  = makePanel('cvJ','julia',     { cx:0,    cy:0, halfW:1.6  }, 'footJ');
+
+function sizeCanvas(panel){
+  const rect = panel.stage.getBoundingClientRect();
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  let w = Math.max(10, Math.round(rect.width  * dpr));
+  let h = Math.max(10, Math.round(rect.height * dpr));
+  const CAP = 1600;
+  if (w > CAP){ h = Math.round(h * CAP / w); w = CAP; }
+  if (panel.canvas.width !== w || panel.canvas.height !== h){
+    panel.canvas.width = w; panel.canvas.height = h;
+  }
+  panel.k = w / Math.max(1, rect.width);
+  if (panel.overlay){ panel.overlay.width = w; panel.overlay.height = h; }
+}
+
+/* ================= core renderer: z <- z^2 + c, escape-time, smooth coloring ================= */
+function fillRows(panel, data, w, h, y0, y1, fast){
+  const { cx, cy, halfW } = panel.view;
+  const s = (2 * halfW) / w;
+  const maxIter = fast ? Math.min(state.maxIter, 120) : state.maxIter;
+  const L = lut, M = LUTMASK;
+  const isM = panel.type === 'mandelbrot';
+  const cr0 = cx, ci0 = cy, jre = state.c.re, jim = state.c.im;
+  const wHalf = w * 0.5, hHalf = h * 0.5;
+  for (let py = y0; py < y1; py++){
+    const off = (py - hHalf) * s;                 // canvas y grows down -> imag grows up
+    let p = py * w * 4;
+    for (let px = 0; px < w; px++, p += 4){
+      const dx = (px - wHalf) * s;
+      let zr, zi, cr, ci, n;
+      if (isM){ zr = 0; zi = 0; cr = cr0 + dx; ci = ci0 - off; }
+      else    { zr = cr0 + dx; zi = ci0 - off; cr = jre; ci = jim; }
+      n = 0;
+      while (n < maxIter && zr*zr + zi*zi <= 4){
+        zi = 2*zr*zi + ci;
+        zr = zr*zr - zi*zi + cr;
+        n++;
+      }
+      if (n === maxIter){
+        data[p] = L[0]; data[p+1] = L[1]; data[p+2] = L[2];
+      } else {
+        const sm = n + 1 - Math.log2(Math.log(zr*zr + zi*zi) * 0.5); // continuous iteration count
+        const i3 = ((sm * 32) | 0) & M;
+        data[p] = L[i3*3]; data[p+1] = L[i3*3+1]; data[p+2] = L[i3*3+2];
+      }
+      data[p+3] = 255;
+    }
+  }
+}
+
+function renderFast(panel){
+  const w = panel.canvas.width, h = panel.canvas.height;
+  const fw = Math.max(64, (w*0.25)|0), fh = Math.max(48, (h*0.25)|0);
+  let off = panel.offFast;
+  if (!off) off = panel.offFast = document.createElement('canvas');
+  if (off.width !== fw || off.height !== fh){ off.width = fw; off.height = fh; }
+  const octx = off.getContext('2d');
+  const img = octx.createImageData(fw, fh);
+  fillRows(panel, img.data, fw, fh, 0, fh, true);
+  octx.putImageData(img, 0, 0);
+  panel.ctx.drawImage(off, 0, 0, w, h);
+  updateFoot(panel, 'preview');
+}
+
+function renderFull(panel){
+  const token = panel.token;
+  const w = panel.canvas.width, h = panel.canvas.height;
+  let off = panel.offFull;
+  if (!off) off = panel.offFull = document.createElement('canvas');
+  if (off.width !== w || off.height !== h){ off.width = w; off.height = h; }
+  const octx = off.getContext('2d');
+  const img = octx.createImageData(w, h);
+  const data = img.data;
+  const rowsPer = Math.ceil(h / 12);
+  let row = 0;
+  const t0 = performance.now();
+  function step(){
+    if (panel.token !== token) return;            // superseded by a newer request
+    const end = Math.min(h, row + rowsPer);
+    fillRows(panel, data, w, h, row, end, false);
+    octx.putImageData(img, 0, 0, 0, row, w, end - row);
+    panel.ctx.drawImage(off, 0, 0, w, h);
+    row = end;
+    if (row < h && panel.token === token) panel.raf = requestAnimationFrame(step);
+    else {
+      panel.raf = 0;
+      updateFoot(panel, 'full', performance.now() - t0);
+      if (panel.type === 'mandelbrot') updateMarker(panel);
+    }
+  }
+  cancelAnimationFrame(panel.raf);
+  panel.raf = requestAnimationFrame(step);
+}
+
+function requestRender(panel){
+  const token = ++panel.token;
+  clearTimeout(panel.fullTimer);
+  cancelAnimationFrame(panel.raf);
+  panel.raf = requestAnimationFrame(() => { if (panel.token === token) renderFast(panel); });
+  panel.fullTimer = setTimeout(() => { if (panel.token === token) renderFull(panel); }, 320);
+}
+
+/* ================= readouts & marker ================= */
+function updateFoot(panel, mode, ms){
+  const { cx, cy, halfW } = panel.view;
+  const d = halfW < 0.05 ? 8 : 4;
+  const w = 2 * halfW;
+  const wTxt = w >= 0.01 ? w.toFixed(4) : w.toExponential(2);
+  const left = panel.type === 'mandelbrot'
+    ? 'center ' + fmtC(cx, cy, d) + ' · width ' + wTxt
+    : 'c ' + fmtC(state.c.re, state.c.im, 4) + ' · center ' + fmtC(cx, cy, d);
+  panel.foot.innerHTML = '<span>' + left + '</span><span class="mode">' +
+    state.maxIter + ' iter · ' + mode + (ms != null ? ' · ' + (ms/1000).toFixed(2) + ' s' : '') + '</span>';
+}
+function updateMarker(panel){
+  if (!panel.marker) return;
+  const cv = panel.canvas, { cx, cy, halfW } = panel.view;
+  const s = 2 * halfW / cv.width;
+  const x = (state.c.re - cx) / s + cv.width / 2;
+  const y = cv.height / 2 - (state.c.im - cy) / s;
+  const k = panel.k || 1;
+  if (x < -30*k || x > cv.width + 30*k || y < -30*k || y > cv.height + 30*k)
+    panel.marker.style.opacity = '0';
+  else {
+    panel.marker.style.opacity = '1';
+    panel.marker.style.transform = 'translate(' + (x/k).toFixed(1) + 'px,' + (y/k).toFixed(1) + 'px)';
+  }
+}
+function syncCUI(){
+  const txt = 'c = ' + fmtC(state.c.re, state.c.im, 4);
+  document.getElementById('cReadout').textContent = txt;
+  document.getElementById('cChip').textContent = txt;
+  const chips = document.getElementById('presets');
+  if (chips) [...chips.children].forEach(x =>
+    x.classList.toggle('active',
+      Math.abs(+x.dataset.re - state.c.re) < 1e-9 && Math.abs(+x.dataset.im - state.c.im) < 1e-9));
+  updateMarker(mandel);
+}
+function onCChanged(){ syncCUI(); requestRender(julia); }
+
+/* ================= interaction: pan / zoom / pinch / click-to-seed ================= */
+function zoomAt(panel, mx, my, factor){
+  const cv = panel.canvas, { cx, cy, halfW } = panel.view;
+  const s = 2 * halfW / cv.width;
+  const cr = cx + (mx - cv.width/2) * s;
+  const ci = cy - (my - cv.height/2) * s;
+  const nh = clamp(halfW * factor, 1e-11, 8);
+  const ns = 2 * nh / cv.width;
+  panel.view.halfW = nh;
+  panel.view.cx = cr - (mx - cv.width/2) * ns;
+  panel.view.cy = ci + (my - cv.height/2) * ns;
+}
+
+let hoverEvt = null, hoverRaf = 0;
+function hover(e){
+  hoverEvt = e;
+  if (!hoverRaf) hoverRaf = requestAnimationFrame(() => { hoverRaf = 0; if (hoverEvt) drawHover(hoverEvt); });
+}
+function drawHover(e){
+  const cv = mandel.canvas, o = mandel.octx;
+  const r = cv.getBoundingClientRect(), k = cv.width / r.width;
+  const px = (e.clientX - r.left) * k, py = (e.clientY - r.top) * k;
+  o.clearRect(0, 0, cv.width, cv.height);
+  o.strokeStyle = 'rgba(242,163,60,0.35)'; o.lineWidth = 1;
+  o.beginPath();
+  o.moveTo(px, 0); o.lineTo(px, cv.height);
+  o.moveTo(0, py); o.lineTo(cv.width, py);
+  o.stroke();
+  const { cx, cy, halfW } = mandel.view, s = 2 * halfW / cv.width;
+  const cr = cx + (px - cv.width/2) * s, ci = cy - (py - cv.height/2) * s;
+  const tip = mandel.tip;
+  tip.textContent = 'c = ' + fmtC(cr, ci, 4);
+  const tx = e.clientX - r.left, ty = e.clientY - r.top;
+  const fx = tx > r.width - 170 ? tx - 16 - tip.offsetWidth : tx + 16;
+  const fy = ty > r.height - 44 ? ty - 36 : ty + 16;
+  tip.style.transform = 'translate(' + fx + 'px,' + fy + 'px)';
+  tip.style.opacity = '1';
+}
+function clearHover(){
+  if (mandel.octx) mandel.octx.clearRect(0, 0, mandel.canvas.width, mandel.canvas.height);
+  mandel.tip.style.opacity = '0';
+}
+
+function attachInteractions(panel){
+  const cv = panel.canvas, stage = panel.stage;
+  const pts = new Map();
+  let pinch = null;
+  const dev = e => {
+    const r = cv.getBoundingClientRect(), k = cv.width / r.width;
+    return { x:(e.clientX - r.left) * k, y:(e.clientY - r.top) * k, r, k };
+  };
+  cv.addEventListener('pointerdown', e => {
+    cv.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    panel.moved = 0;
+    stage.classList.add('dragging');
+    if (panel.type === 'mandelbrot') clearHover();
+    if (pts.size === 2){
+      const [a,b] = [...pts.values()];
+      pinch = { d:Math.hypot(a.x-b.x, a.y-b.y), cx:(a.x+b.x)/2, cy:(a.y+b.y)/2 };
+    }
+  });
+  cv.addEventListener('pointermove', e => {
+    if (panel.type === 'mandelbrot' && !pts.has(e.pointerId)){ hover(e); return; }
+    const prev = pts.get(e.pointerId);
+    if (!prev) return;
+    pts.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    const r = cv.getBoundingClientRect(), k = cv.width / r.width;
+    if (pts.size === 2 && pinch){
+      const [a,b] = [...pts.values()];
+      const d = Math.hypot(a.x-b.x, a.y-b.y);
+      const mx = (a.x+b.x)/2, my = (a.y+b.y)/2;
+      if (pinch.d > 1 && d > 1){
+        zoomAt(panel, (mx - r.left)*k, (my - r.top)*k, pinch.d / d);
+        const s = 2 * panel.view.halfW / cv.width;
+        panel.view.cx -= (mx - pinch.cx) * k * s;
+        panel.view.cy += (my - pinch.cy) * k * s;
+        pinch.cx = mx; pinch.cy = my; pinch.d = d;
+      }
+      requestRender(panel);
+      if (panel.type === 'mandelbrot') updateMarker(panel);
+    } else if (pts.size === 1){
+      const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+      panel.moved += Math.abs(dx) + Math.abs(dy);
+      const s = 2 * panel.view.halfW / cv.width;
+      panel.view.cx -= dx * k * s;
+      panel.view.cy += dy * k * s;
+      requestRender(panel);
+      if (panel.type === 'mandelbrot') updateMarker(panel);
+    }
+  });
+  const release = e => {
+    const wasClick = pts.has(e.pointerId) && panel.moved < 6 && pts.size === 1;
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
+    if (pts.size === 0) stage.classList.remove('dragging');
+    if (wasClick && panel.type === 'mandelbrot'){
+      const p = dev(e), { cx, cy, halfW } = panel.view, s = 2 * halfW / cv.width;
+      state.c.re = cx + (p.x - cv.width/2) * s;
+      state.c.im = cy - (p.y - cv.height/2) * s;
+      onCChanged();
+    }
+  };
+  cv.addEventListener('pointerup', release);
+  cv.addEventListener('pointercancel', e => {
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
+    if (!pts.size) stage.classList.remove('dragging');
+  });
+  cv.addEventListener('wheel', e => {
+    e.preventDefault();
+    const p = dev(e);
+    zoomAt(panel, p.x, p.y, Math.exp(e.deltaY * 0.0016));
+    if (panel.type === 'mandelbrot') clearHover();
+    requestRender(panel);
+    if (panel.type === 'mandelbrot') updateMarker(panel);
+  }, { passive:false });
+  cv.addEventListener('pointerleave', () => { if (panel.type === 'mandelbrot') clearHover(); });
+}
+
+/* ================= controls ================= */
+function wireControls(){
+  const chips = document.getElementById('presets');
+  PRESETS.forEach(p => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip';
+    b.dataset.re = p.re; b.dataset.im = p.im;
+    b.innerHTML = '<b>' + p.name + '</b><small>' + fmtC(p.re, p.im, 4) + '</small>';
+    b.addEventListener('click', () => { state.c.re = p.re; state.c.im = p.im; onCChanged(); });
+    chips.appendChild(b);
+  });
+  const sw = document.getElementById('swatches');
+  Object.keys(PALETTES).forEach(key => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'swatch' + (key === paletteKey ? ' active' : '');
+    b.dataset.key = key;
+    b.innerHTML = '<i style="background:linear-gradient(90deg,' + PALETTES[key].stops.join(',') + ')"></i>' + PALETTES[key].label;
+    b.addEventListener('click', () => {
+      paletteKey = key; buildLUT(key);
+      [...sw.children].forEach(x => x.classList.toggle('active', x.dataset.key === key));
+      requestRender(mandel); requestRender(julia);
+    });
+    sw.appendChild(b);
+  });
+  const iter = document.getElementById('iter');
+  iter.addEventListener('input', () => {
+    state.maxIter = +iter.value;
+    document.getElementById('iterOut').textContent = iter.value;
+    requestRender(mandel); requestRender(julia);
+  });
+  document.getElementById('reset').addEventListener('click', () => {
+    mandel.view = Object.assign({}, mandel.defView);
+    julia.view  = Object.assign({}, julia.defView);
+    state.c.re = -0.8; state.c.im = 0.156;
+    onCChanged();
+    requestRender(mandel);
+  });
+}
+
+/* ================= boot ================= */
+buildLUT(paletteKey);
+sizeCanvas(mandel); sizeCanvas(julia);
+attachInteractions(mandel); attachInteractions(julia);
+wireControls();
+syncCUI();
+requestRender(mandel);
+setTimeout(() => requestRender(julia), 80);
+
+let rT = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(rT);
+  rT = setTimeout(() => {
+    sizeCanvas(mandel); sizeCanvas(julia);
+    clearHover();
+    requestRender(mandel); requestRender(julia);
+  }, 150);
+});
+</script>
+</body>
+</html>

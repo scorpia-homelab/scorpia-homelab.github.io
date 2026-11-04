@@ -1,0 +1,18 @@
+{
+  "reasoning": 10,
+  "creative": 8,
+  "constraints": 10,
+  "fib": 10,
+  "json": 10,
+  "breakout": 10,
+  "delta": 10,
+  "fractal": 10,
+  "_notes": {
+    "method": "objective checks by harness (fib executed, json schema-validated, sentence count) + headless play-test (playtest.py) + manual output review",
+    "reasoning": "riddle correct ('all but 9' -> 9 alive), direct final number, no preamble: 10",
+    "creative": "complete ~110-word story, coherent build, real twist ('the thing that wore her face' resolved by the real Vale at the glass), readable prose; familiar sci-fi setup: 8",
+    "breakout": "single self-contained 842-line doc; play-test: painted, animates, responds to input, 0 JS errors: 10",
+    "delta": "FIRST COMPLETE delta on this stack at full quality: attempt 1 aborted by loop guard at 9.8K chars (sampling roll, temp 0.2); attempt 2 produced a single self-contained 922-line doc (89,568 tok total, 71.6K thinking — squeaked inside the 100K output window, same marginal-headroom shape as the Oct row's 90K sample). Play-test: 11 canvases, painted, animates, responds, 0 JS errors: 10. NOT headroom improvement over the Oct row — this is the sampling re-roll the Oct row's notes predicted ('treat delta completions on this stack as marginal').",
+    "fractal": "single self-contained 598-line doc, 3 canvases; play-test: painted, animates, responds, 0 JS errors: 10"
+  }
+}
