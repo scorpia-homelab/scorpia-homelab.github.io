@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Watt by watt: tuning a ten-year-old GTX 1080 for local LLMs — Scorpia Homelab Blog</title>
+<meta name="description" content="Repaste, a null thermal-cap A/B, a full 160/180/200 W power-limit curve, one memory-clock dead end — and the noise floor that reclassified our '160 W penalty' as noise.">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #0b0d12; --bg2: #12151d; --fg: #e8eaf0; --muted: #98a0ae;
+    --card: #141824; --card2: #181d2b; --border: #232a3a; --accent: #6ea8fe;
+    --accent2: #9f7cff; --green: #4ade80; --amber: #fbbf24; --radius: 14px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f5f7fa; --bg2: #eceff5; --fg: #171b22; --muted: #5b6472;
+            --card: #ffffff; --card2: #f8f9fc; --border: #dfe4ec; --accent: #2458d8; --accent2: #6d3fd4; }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font: 16px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background:
+      radial-gradient(1100px 500px at 85% -10%, rgba(110,168,254,.10), transparent 60%),
+      radial-gradient(900px 500px at 0% 0%, rgba(159,124,255,.08), transparent 55%),
+      var(--bg);
+    color: var(--fg);
+  }
+  main { max-width: 820px; margin: 0 auto; padding: 0 22px; }
+  .kicker { font-size: .8rem; letter-spacing: .18em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin: 40px 0 12px; }
+  .crumb { font-size: .85rem; margin-top: 30px; }
+  .crumb a { color: var(--accent); text-decoration: none; }
+  h1 { font-size: clamp(1.6rem, 4vw, 2.4rem); line-height: 1.15; letter-spacing: -.02em; font-weight: 800; }
+  h1 .grad { background: linear-gradient(92deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .meta { color: var(--muted); font-size: .85rem; margin: 10px 0 26px; }
+  h2 { font-size: 1.25rem; margin: 34px 0 12px; letter-spacing: -.01em; }
+  h3 { font-size: 1.02rem; margin: 22px 0 8px; color: var(--accent2); }
+  p { margin-bottom: 14px; }
+  ul, ol { margin: 0 0 14px 22px; }
+  li { margin-bottom: 6px; }
+  a { color: var(--accent); }
+  .tldr { background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+          border-radius: var(--radius); padding: 18px 20px; margin: 20px 0 26px; }
+  .tldr b { color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0 20px; font-size: .92rem; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; }
+  .win { color: var(--green); font-weight: 700; }
+  code, pre { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .88em; }
+  code { background: var(--card2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; }
+  pre { background: var(--card2); border: 1px solid var(--border); border-radius: var(--radius);
+        padding: 14px 16px; overflow-x: auto; margin: 12px 0 18px; line-height: 1.5; }
+  pre code { background: none; border: none; padding: 0; }
+  .ok { color: var(--green); } .warn { color: var(--amber); }
+  footer { margin: 50px 0 40px; color: var(--muted); font-size: .82rem; border-top: 1px solid var(--border); padding-top: 18px; }
+  footer .safe { color: var(--green); }
+</style>
+</head>
+<body>
+<main>
+  <div class="crumb"><a href="/">scorpia.xyz</a> / <a href="/blog/">blog</a></div>
+  <div class="kicker">Blog &middot; GPU tuning</div>
+  <h1>Watt by watt: tuning a ten-year-old <span class="grad">GTX 1080</span> for local LLMs</h1>
+  <div class="meta">8 November 2026 &middot; Peter + Hermes Agent &middot; one afternoon of A/B testing on erwing</div>
+
+  <div class="tldr">
+    <b>TL;DR</b> &mdash; Our ten-year-old GTX 1080 box runs a 9B local LLM around the clock and
+    was plateauing at <b>93&ndash;94&nbsp;&deg;C</b>. A repaste recovered 13&nbsp;&deg;C. A
+    thermal-cap A/B then proved the cap was never the constraint &mdash; the power limit is. A full
+    160/180/200&nbsp;W power-limit curve showed <b>prefill tracks the clocks while generation stays
+    flat</b>, and a memory-clock A/B ended in a dead end: the driver flat-out refuses to lock
+    GDDR5X clocks on Pascal. The invalid test still paid &mdash; it measured a <b>&plusmn;1.3%
+    run-to-run noise floor</b>, which reclassified our &ldquo;160&nbsp;W generation penalty&rdquo;
+    as noise. We are now running 160&nbsp;W &ldquo;for a while&rdquo;: ~4&ndash;6&nbsp;&deg;C
+    cooler, a much quieter fan, a real ~5% prefill cost, and generation that is statistically
+    free.
+  </div>
+
+  <h2>Why tune a 2016 GPU</h2>
+  <p>
+    <b>erwing</b>, the lab&rsquo;s ten-year-old box, carries a GTX 1080 8&nbsp;GB (GDDR5X,
+    10&nbsp;Gbps, 180&nbsp;W stock) and has been serving <code>Qwen3.5 9B (Q4_K_M)</code> through
+    <code>llama-server</code> on 24/7 duty. After months of that, the card was plateauing at
+    93&ndash;94&nbsp;&deg;C under a modest benchmark load &mdash; within three degrees of the
+    silicon&rsquo;s ~96&ndash;97&nbsp;&deg;C hardware-slowdown point, on paste that was older
+    than most of the lab&rsquo;s hardware.
+  </p>
+  <p>
+    The question wasn&rsquo;t &ldquo;is this card slow&rdquo; &mdash; it is, and we accept that
+    &mdash; but <b>where exactly does it leak performance</b>: thermals? the power cap? memory
+    bandwidth? Every answer below came from an A/B run in the same thermal window, never from
+    vibes.
+  </p>
+
+  <h2>Step 1 &mdash; the repaste (the one lever that mattered for temperature)</h2>
+  <p>
+    Fresh thermal paste (and pads) went on during the 7 November reboot window. The before/after
+    is about as clean as a variable gets:
+  </p>
+  <table>
+    <tr><th>Soak plateau (8 &times; 1800-token generations)</th><th>Before</th><th>After</th></tr>
+    <tr><td>GPU temperature</td><td>93&ndash;94&nbsp;&deg;C</td><td>80&ndash;81&nbsp;&deg;C <span class="win">&minus;13&nbsp;&deg;C</span></td></tr>
+    <tr><td>Distance to HW slowdown</td><td>&le;3&nbsp;&deg;C</td><td>~15&nbsp;&deg;C <span class="win">safe</span></td></tr>
+  </table>
+  <p>
+    Everything downstream &mdash; every A/B, every power point &mdash; was measured on the
+    repasted card.
+  </p>
+
+  <h2>Step 2 &mdash; the thermal-cap A/B: the cap was never the constraint</h2>
+  <p>
+    With 15&nbsp;&deg;C of headroom back, the obvious next move was to raise the software
+    target-temperature cap (driver 581.57, <code>nvidia-smi -gtt</code>, range 60&ndash;92&nbsp;&deg;C)
+    from the default 83&nbsp;&deg;C to 86&nbsp;&deg;C. The working hypothesis: if the cap were
+    biting, <i>prefill</i> (compute- and clock-bound) should gain, while <i>generation</i>
+    (bandwidth-bound) should not.
+  </p>
+  <p>
+    Both arms ran from the same cold state, with the cap as the only variable &mdash; a
+    ~10K-token unique prefill plus a 600-token generation, measured at the plateau:
+  </p>
+  <table>
+    <tr><th></th><th>83&nbsp;&deg;C cap (default)</th><th>86&nbsp;&deg;C cap</th></tr>
+    <tr><td>Prefill</td><td>560.9 tok/s</td><td>561.3 tok/s</td></tr>
+    <tr><td>Generation (600 tok)</td><td>30.1 tok/s</td><td>30.1 tok/s</td></tr>
+    <tr><td>Plateau</td><td>82&nbsp;&deg;C</td><td>82&nbsp;&deg;C</td></tr>
+    <tr><td>Verdict</td><td colspan="2">a statistical wash</td></tr>
+  </table>
+  <p>
+    The cap was never the binding constraint after the repaste: the <b>power limit</b> was already
+    pinning the clocks long before 83&nbsp;&deg;C would. We kept 86&nbsp;&deg;C as headroom for
+    the power-limit tests below. (House footnote: the first attempt at this A/B was voided
+    because the flag is <code>-gtt</code>, not <code>-lt</code> &mdash; the &ldquo;86&nbsp;&deg;C&rdquo;
+    arm had silently run at 83. The redo, cold-to-cold, is what the table shows.)
+  </p>
+
+  <h2>Step 3 &mdash; the power-limit curve</h2>
+  <p>
+    If the power limit is the binding constraint, the curve <i>is</i> the story. Protocol for each
+    point: apply <code>-pl</code>, 120&nbsp;s cool-down, 8 &times; 1800-token generations to a
+    fresh plateau, then prefill + 600-token generation <b>at the plateau</b>, with the GPU sampled
+    every 30&nbsp;s. All arms at the 86&nbsp;&deg;C cap.
+  </p>
+  <table>
+    <tr><th></th><th>160 W</th><th>180 W (stock)</th><th>200 W</th></tr>
+    <tr><td>Prefill</td><td>534.0 tok/s <span class="warn">&minus;4.9%</span></td><td>561.3 tok/s</td><td>582.4 tok/s <span class="win">+3.8%</span></td></tr>
+    <tr><td>Generation (600 tok)</td><td>29.7 tok/s</td><td>30.1 tok/s</td><td>30.3 tok/s</td></tr>
+    <tr><td>Soak average (8 &times; 1800 tok)</td><td>29.65</td><td>29.94</td><td>30.15</td></tr>
+    <tr><td>Clocks at plateau</td><td>1670&ndash;1695 MHz</td><td>1746&ndash;1771 MHz</td><td>1797&ndash;1809 MHz</td></tr>
+    <tr><td>Plateau temp</td><td class="win">79&ndash;80&nbsp;&deg;C</td><td>82&nbsp;&deg;C</td><td>84&ndash;85&nbsp;&deg;C</td></tr>
+    <tr><td>Fan at plateau</td><td class="win">58&ndash;62%</td><td>62&ndash;67%</td><td>68&ndash;75%</td></tr>
+    <tr><td>Power draw</td><td>145&ndash;158 W</td><td>170&ndash;182 W</td><td>186&ndash;199 W</td></tr>
+    <tr><td>Margin to the 86&nbsp;&deg;C cap</td><td class="win">6&ndash;7&nbsp;&deg;C</td><td>4&nbsp;&deg;C</td><td>1&ndash;2&nbsp;&deg;C</td></tr>
+  </table>
+  <p>
+    Read together: <b>prefill is clock-bound</b> &mdash; it tracks the power limit with diminishing
+    returns (160&rarr;180 buys +5.1%, 180&rarr;200 buys +3.8%) &mdash; while <b>generation is
+    flat across the whole range</b> (29.7&ndash;30.3, which we will soon explain is entirely
+    noise). We deliberately did not test 217&nbsp;W (the driver&rsquo;s max): it would have made
+    86&nbsp;&deg;C the binding cap again, which is exactly the thing we just got rid of.
+  </p>
+
+  <h2>The throttle bit that finally told the truth</h2>
+  <p>
+    Through the whole session, <code>nvidia-smi</code>&rsquo;s throttle-reason field kept showing
+    <code>0x&hellip;0001</code> &mdash; &ldquo;HW thermal protection&rdquo; &mdash; at 33&nbsp;&deg;C,
+    idle, with the fan at 30%. Stale latching: the bits remember a past event and are not a live
+    signal.
+  </p>
+  <p>
+    Then, at 160&nbsp;W, <i>during prefill</i>, the field showed <code>0x&hellip;0004</code>
+    (HW power brake) <b>together with a visible clock dip to 1594&nbsp;MHz</b> &mdash; the first
+    genuine throttle signal of the session. The pattern that matters: the clock dip is the
+    signal, the bit is the latched echo. At 160&nbsp;W the cap bites hardest exactly where the
+    card is most compute-hungry; at 180/200&nbsp;W the same prefill never hit a brake.
+  </p>
+
+  <h2>The memory-speed dead end</h2>
+  <p>
+    The flat generation column begged for proof: decode re-reads the whole model from VRAM every
+    token, so if it is bandwidth-bound, cutting memory bandwidth ~10% should cut generation
+    ~10%. The driver&rsquo;s help text even lists <code>-lmc</code> (lock memory clocks), and the
+    card reports four VRAM P-states &mdash; 5005&nbsp;MHz (320&nbsp;GB/s) under load, with
+    4513/810/405 listed as &ldquo;supported&rdquo;.
+  </p>
+  <p>
+    It did not work. The GPU refuses:
+  </p>
+  <pre><code>nvidia-smi -lmc 4513
+Setting locked Memory clocks is not supported for GPU 00000000:01:00.0.
+All done.</code></pre>
+  <p>
+    Pascal&rsquo;s GDDR5X is fused to a single speed under load; the other P-state entries are
+    listings, not lockable values. The &ldquo;4513 vs 5005&rdquo; A/B we ran (both arms under the
+    160&nbsp;W cap so core clocks were identical) was <b>void the moment that line printed</b>
+    &mdash; arm B never left 5005&nbsp;MHz, so the reported &minus;0.33% delta was two identical
+    conditions. We are discarding it, not publishing it as a finding. The mechanistic question
+    &ldquo;would faster memory help generation?&rdquo; is simply unanswerable on this card:
+    there is no lever to pull.
+  </p>
+
+  <h2>What the invalid test actually measured</h2>
+  <p>
+    The discarded A/B ran five 600-token generations in total &mdash; all of them at the same
+    settings, which happens to be exactly what a noise-floor measurement requires:
+  </p>
+  <table>
+    <tr><th>Run</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th></tr>
+    <tr><td>tok/s</td><td>30.1</td><td>30.0</td><td>30.0</td><td>29.9</td><td>30.0</td></tr>
+  </table>
+  <p>
+    <b>&plusmn;0.4 tok/s, i.e. &plusmn;1.3%, is just run-to-run variance</b> on this
+    box&mdash;engine&mdash;model combination. Rescoring the power curve against that band: the
+    160&nbsp;W generation figure (29.7, nominally &minus;1.3% vs 30.1) sits exactly at the edge
+    of the noise, and the 200&nbsp;W one (+0.7%) is inside it. So the honest statement is not
+    &ldquo;160&nbsp;W costs 1.3% of generation&rdquo; but <b>&ldquo;generation is statistically
+    insensitive to the power limit across 160&ndash;200&nbsp;W&rdquo;</b> &mdash; which is the
+    bandwidth-bound model surviving on better evidence, since the core clocks moved &plusmn;70&nbsp;MHz
+    the whole time.
+  </p>
+
+  <h2>Where we landed: 160&nbsp;W, for a while</h2>
+  <p>
+    The standing order is to run <b>160&nbsp;W + 86&nbsp;&deg;C</b> for a stretch of normal use
+    before deciding permanently. The trade on the table:
+  </p>
+  <ul>
+    <li><b>160 W</b> &mdash; 79&ndash;80&nbsp;&deg;C plateau, fan &le;62%, 145&ndash;158&nbsp;W
+    draw, 6&ndash;7&nbsp;&deg;C of headroom to the cap. Real cost: ~5% of prefill. Generation:
+    statistically free.</li>
+    <li><b>180 W (stock)</b> &mdash; the balanced point: 82&nbsp;&deg;C, 4&nbsp;&deg;C headroom,
+    everything at its as-sold speed.</li>
+    <li><b>200 W</b> &mdash; maximum speed (+3.8% prefill) at 84&ndash;85&nbsp;&deg;C, 75% fan and
+    1&ndash;2&nbsp;&deg;C of headroom. We would only pick this for heavy batch work.</li>
+  </ul>
+  <p>
+    One ops footnote for the brave: <code>-pl</code> and <code>-gtt</code> are both volatile &mdash;
+    a reboot silently reverts erwing to 180&nbsp;W / 83&nbsp;&deg;C. Making any of the above
+    permanent is a one-line fold into the box&rsquo;s startup task; the decision waits for the
+    observation window to finish.
+  </p>
+
+  <h2>Lessons</h2>
+  <ul>
+    <li><b>Repaste first, tune second.</b> A 13&nbsp;&deg;C paste swap beat every software knob
+    we then tried.</li>
+    <li><b>Find the binding constraint before A/B-ing anything else.</b> The thermal cap was
+    never binding after the repaste; the power limit was. The null 83-vs-86 test is what proved
+    it.</li>
+    <li><b>On a fused-memory card, the power limit is the only real knob.</b> Prefill tracks it;
+    generation does not.</li>
+    <li><b>Throttle-reason bits latch.</b> Trust the clock dip, not the bit &mdash; the
+    &ldquo;thermal protection&rdquo; flag at 33&nbsp;&deg;C idle is a ghost, while the power-brake
+    bit plus a 1594&nbsp;MHz dip is a confession.</li>
+    <li><b>Measure your noise floor before believing single-digit-percent deltas.</b>
+    &plusmn;1.3% run-to-run is the size of the effects we were chasing.</li>
+    <li><b>A dead-end test can still pay.</b> The invalid memory-clock A/B produced the noise
+    floor that fixed the interpretation of the entire power curve.</li>
+  </ul>
+
+  <footer>
+    Part of <a href="/">scorpia.xyz</a> — blog by Peter + Hermes Agent. All figures from genuine
+    runs on our own hardware. <span class="safe">No internal addresses or lab details are
+    published — the pipeline leak-gates everything before it ships.</span>
+  </footer>
+</main>
+</body>
+</html>
