@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mandelbrot &amp; Julia — an escape-time atlas</title>
+<style>
+  :root {
+    --bg: #060910;
+    --panel: #0b1120;
+    --panel-edge: rgba(148, 178, 255, 0.10);
+    --ink: #e9edf6;
+    --muted: #8a94ac;
+    --faint: #5a6478;
+    --amber: #f2a33c;
+    --teal: #5fd6c8;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: dark; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  /* layered ambient background: faint dot lattice + two slow-drifting glows */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: -2; pointer-events: none;
+    background-image: radial-gradient(rgba(160, 190, 255, 0.05) 1px, transparent 1.4px);
+    background-size: 26px 26px;
+  }
+  .glow { position: fixed; z-index: -1; pointer-events: none; border-radius: 50%; }
+  .glow-a {
+    width: 70vmax; height: 70vmax; left: -18vmax; top: -28vmax;
+    background: radial-gradient(circle, rgba(242,163,60,0.08), transparent 62%);
+    animation: driftA 46s ease-in-out infinite alternate;
+  }
+  .glow-b {
+    width: 78vmax; height: 78vmax; right: -22vmax; bottom: -32vmax;
+    background: radial-gradient(circle, rgba(95,214,200,0.07), transparent 62%);
+    animation: driftB 58s ease-in-out infinite alternate;
+  }
+  @keyframes driftA { to { transform: translate(6vmax, 4vmax); } }
+  @keyframes driftB { to { transform: translate(-5vmax, -4vmax); } }
+
+  header {
+    max-width: 1180px; margin: 0 auto;
+    padding: 26px 20px 10px;
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 20px;
+  }
+  .brand { display: flex; gap: 16px; align-items: center; }
+  .mark {
+    width: 52px; height: 52px; flex: none;
+    display: grid; place-items: center;
+    font-family: var(--serif); font-style: italic; font-size: 1.45rem;
+    color: var(--amber);
+    border: 1px solid rgba(242,163,60,0.45);
+    border-radius: 10px;
+    background: rgba(242,163,60,0.06);
+    box-shadow: 0 0 26px rgba(242,163,60,0.14);
+  }
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(1.7rem, 3.4vw, 2.5rem);
+    font-weight: 600; line-height: 1.05; margin: 0;
+    letter-spacing: 0.01em;
+  }
+  h1 .amp { font-style: italic; color: var(--amber); font-weight: 400; }
+  .tagline {
+    margin: 7px 0 0;
+    font-family: var(--mono); font-size: 0.72rem;
+    color: var(--muted); letter-spacing: 0.04em;
+  }
+  .tagline .eq { color: #cdd6ea; }
+  .status {
+    font-family: var(--mono); font-size: 0.68rem;
+    color: var(--faint); text-align: right; line-height: 1.7; white-space: nowrap;
+  }
+  @media (max-width: 760px) { .status { display: none; } }
+
+  main { max-width: 1180px; margin: 0 auto; padding: 14px 20px 26px; }
+  .fractals { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 920px) { .fractals { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: linear-gradient(180deg, #0c1220, #0a0f1b);
+    border: 1px solid var(--panel-edge);
+    border-radius: 14px;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    transition: border-color .3s, box-shadow .3s;
+    animation: rise .7s cubic-bezier(.2,.7,.2,1) both;
+  }
+  .panel-julia { animation-delay: .12s; }
+  .panel:hover {
+    border-color: rgba(148,178,255,0.24);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 18px 50px -22px rgba(0,0,0,0.85);
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+
+  .plate {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .numeral {
+    font-family: var(--serif); font-style: italic;
+    font-size: 1.5rem; line-height: 1;
+    width: 1.6ch; text-align: center;
+  }
+  .panel-mandel .numeral { color: var(--amber); }
+  .panel-julia  .numeral { color: var(--teal); }
+  .plate h2 { font-family: var(--serif); font-size: 1.22rem; font-weight: 600; margin: 0; }
+  .plate .sub {
+    font-family: var(--mono); font-size: 0.66rem;
+    color: var(--muted); margin: 4px 0 0; letter-spacing: .03em;
+  }
+  .plate .sub code { color: #cdd6ea; }
+  .badge {
+    margin-left: auto; flex: none;
+    font-family: var(--mono); font-size: 0.6rem;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 5px 10px; border-radius: 999px;
+  }
+  .panel-mandel .badge { color: var(--amber); border: 1px solid rgba(242,163,60,0.4); background: rgba(242,163,60,0.07); }
+  .panel-julia  .badge { color: var(--teal);  border: 1px solid rgba(95,214,200,0.4);  background: rgba(95,214,200,0.07); }
+
+  .stage { position: relative; }
+  .stage > canvas {
+    display: block; width: 100%; aspect-ratio: 1 / 1;
+    cursor: crosshair; touch-action: none;
+    background: #05070d;
+    user-select: none; -webkit-user-select: none;
+  }
+  .stage > canvas.dragging { cursor: grabbing; }
+  .stage::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(130% 130% at 50% 42%, transparent 58%, rgba(3,5,10,0.5) 100%);
+  }
+  .readout {
+    position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 2;
+    display: flex; flex-wrap: wrap; gap: 4px 16px;
+    padding: 8px 12px;
+    background: rgba(5,8,15,0.82);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 9px;
+    font-family: var(--mono); font-size: 0.66rem;
+    user-select: none;
+  }
+  .ro-key { color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-right: 7px; font-size: 0.58rem; }
+  .ro-val { color: #cdd6ea; }
+  .panel-julia .ro-val.c { color: var(--teal); }
+  .ro-cursor { margin-left: auto; }
+
+  .deck { display: grid; grid-template-columns: minmax(300px, 400px) 1fr; gap: 20px; margin-top: 20px; }
+  @media (max-width: 920px) { .deck { grid-template-columns: 1fr; } }
+  .block {
+    background: linear-gradient(180deg, #0c1220, #0a0f1b);
+    border: 1px solid var(--panel-edge);
+    border-radius: 14px;
+    padding: 16px 18px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    animation: rise .7s .2s cubic-bezier(.2,.7,.2,1) both;
+  }
+  .block h3 {
+    margin: 0 0 5px;
+    font-family: var(--mono); font-size: 0.62rem;
+    letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted);
+  }
+  .block .hint { margin: 0 0 14px; font-size: 0.78rem; color: var(--faint); line-height: 1.55; }
+
+  .param-row { display: flex; gap: 16px; align-items: stretch; }
+  #cv-param {
+    width: 168px; flex: none;
+    border-radius: 8px; cursor: crosshair; touch-action: none;
+    border: 1px solid rgba(95,214,200,0.25);
+    transition: border-color .25s, box-shadow .25s;
+    user-select: none; -webkit-user-select: none;
+  }
+  #cv-param:hover { border-color: rgba(95,214,200,0.55); box-shadow: 0 0 22px rgba(95,214,200,0.15); }
+  .param-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .c-big {
+    font-family: var(--mono); font-size: 0.8rem; color: var(--teal);
+    background: rgba(95,214,200,0.06);
+    border: 1px solid rgba(95,214,200,0.25);
+    border-radius: 8px; padding: 9px 12px;
+    white-space: nowrap; overflow: hidden;
+  }
+  .presets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .preset {
+    font-family: var(--mono); font-size: 0.68rem;
+    color: var(--muted);
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 7px; padding: 7px 8px; cursor: pointer;
+    transition: color .18s, border-color .18s, background .18s, transform .18s;
+  }
+  .preset:hover { color: var(--teal); border-color: rgba(95,214,200,0.5); transform: translateY(-1px); }
+  .preset.active { color: #06231f; background: var(--teal); border-color: var(--teal); font-weight: 700; }
+
+  .setting { margin-top: 14px; }
+  .setting .row { display: flex; align-items: center; gap: 12px; }
+  .setting .name {
+    font-family: var(--mono); font-size: 0.62rem;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted); width: 88px; flex: none;
+  }
+  output { font-family: var(--mono); font-size: 0.72rem; color: var(--amber); min-width: 4.5ch; text-align: right; }
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    flex: 1; height: 4px; border-radius: 2px;
+    background: rgba(255,255,255,0.14); outline: none; cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--amber); border: 2px solid #060910;
+    box-shadow: 0 0 10px rgba(242,163,60,0.6); cursor: pointer; transition: transform .15s;
+  }
+  input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.25); }
+  input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--amber); border: 2px solid #060910; cursor: pointer;
+  }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 999px; padding: 4px 12px 4px 5px;
+    cursor: pointer; transition: all .18s;
+    font-family: var(--mono); font-size: 0.66rem; color: var(--muted);
+  }
+  .chip .swatch { width: 30px; height: 15px; border-radius: 999px; flex: none; }
+  .chip:hover { border-color: rgba(255,255,255,0.32); color: var(--ink); transform: translateY(-1px); }
+  .chip.active { border-color: var(--amber); color: var(--ink); box-shadow: 0 0 0 1px rgba(242,163,60,0.35); }
+
+  .actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  .btn {
+    font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.06em;
+    padding: 9px 16px; border-radius: 8px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: all .18s;
+  }
+  .btn .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+  .btn-primary { background: rgba(95,214,200,0.12); color: var(--teal); border: 1px solid rgba(95,214,200,0.45); }
+  .btn-primary:hover { background: rgba(95,214,200,0.2); transform: translateY(-1px); box-shadow: 0 6px 18px -8px rgba(95,214,200,0.5); }
+  .btn-primary.on { background: var(--teal); color: #06231f; }
+  .btn-primary.on .dot { animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: 0.25; } }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid rgba(255,255,255,0.14); }
+  .btn-ghost:hover { color: var(--ink); border-color: rgba(255,255,255,0.32); transform: translateY(-1px); }
+
+  footer { max-width: 1180px; margin: 0 auto; padding: 6px 20px 34px; }
+  footer p { font-family: var(--mono); font-size: 0.64rem; color: var(--faint); line-height: 1.8; margin: 0 0 6px; }
+  footer .fact { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="glow glow-a"></div>
+<div class="glow glow-b"></div>
+
+<header>
+  <div class="brand">
+    <div class="mark">z²</div>
+    <div>
+      <h1>Mandelbrot <span class="amp">&amp;</span> Julia</h1>
+      <p class="tagline">one quadratic map, two planes — <span class="eq">z ← z² + c</span></p>
+    </div>
+  </div>
+  <div class="status" id="status">518,400 px per canvas · 1,000 iters · rendering…</div>
+</header>
+
+<main>
+  <section class="fractals">
+    <article class="panel panel-mandel">
+      <div class="plate">
+        <span class="numeral">I</span>
+        <div>
+          <h2>The Mandelbrot Set</h2>
+          <p class="sub">parameter plane — <code>c</code> is the pixel, <code>z₀ = 0</code></p>
+        </div>
+        <span class="badge">c varies</span>
+      </div>
+      <div class="stage">
+        <canvas id="cv-mandel" width="720" height="720" aria-label="The Mandelbrot set"></canvas>
+        <div class="readout">
+          <span><span class="ro-key">center</span><span class="ro-val" id="m-center">—</span></span>
+          <span><span class="ro-key">width</span><span class="ro-val" id="m-width">—</span></span>
+          <span><span class="ro-key">iters</span><span class="ro-val" id="m-iters">1000</span></span>
+          <span class="ro-cursor"><span class="ro-key">cursor</span><span class="ro-val" id="m-cursor">—</span></span>
+        </div>
+      </div>
+    </article>
+
+    <article class="panel panel-julia">
+      <div class="plate">
+        <span class="numeral">II</span>
+        <div>
+          <h2>The Julia Set</h2>
+          <p class="sub">dynamical plane — <code>z</code> is the pixel, <code>c</code> is fixed</p>
+        </div>
+        <span class="badge">z varies</span>
+      </div>
+      <div class="stage">
+        <canvas id="cv-julia" width="720" height="720" aria-label="The Julia set"></canvas>
+        <div class="readout">
+          <span><span class="ro-key">c</span><span class="ro-val c" id="j-c">—</span></span>
+          <span><span class="ro-key">center</span><span class="ro-val" id="j-center">—</span></span>
+          <span><span class="ro-key">width</span><span class="ro-val" id="j-width">—</span></span>
+          <span><span class="ro-key">iters</span><span class="ro-val" id="j-iters">1000</span></span>
+          <span class="ro-cursor"><span class="ro-key">cursor</span><span class="ro-val" id="j-cursor">—</span></span>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section class="deck">
+    <div class="block">
+      <h3>Julia parameter</h3>
+      <p class="hint">The Mandelbrot set is an atlas of Julia sets — every point c inside it names one. Click or drag the map to move c.</p>
+      <div class="param-row">
+        <canvas id="cv-param" width="300" height="300" title="Mandelbrot set — each point is a Julia parameter" aria-label="Mandelbrot parameter map for choosing c"></canvas>
+        <div class="param-side">
+          <div class="c-big" id="c-big">c = —</div>
+          <div class="presets" id="presets"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="block">
+      <h3>Instrument</h3>
+      <div class="setting">
+        <div class="row">
+          <span class="name">Iterations</span>
+          <input type="range" id="iter-range" min="200" max="3000" step="50" value="1000" aria-label="Maximum iterations">
+          <output id="iter-out">1000</output>
+        </div>
+      </div>
+      <div class="setting">
+        <div class="row">
+          <span class="name">Palette</span>
+          <div class="chips" id="chips"></div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" id="btn-animate"><span class="dot"></span>Animate c</button>
+        <button class="btn btn-ghost" id="btn-reset">Reset both views</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p class="fact">Same iteration, two questions — I asks “which c never escapes?” and II asks “which z never escapes, for this c?”</p>
+  <p>Scroll to zoom · drag to pan · double-click a canvas to reset · pinch on touch. Rendered live in this page — no libraries, no images, just a canvas and a loop.</p>
+</footer>
+
+<noscript><p style="text-align:center;color:#f2a33c">JavaScript is required to render the fractals.</p></noscript>
+
+<script>
+(() => {
+'use strict';
+const TAU = Math.PI * 2;
+const LUT_SIZE = 2048;
+const CYCLES = 2; // palette cycles across the iteration range (periodic → seamless edge)
+
+/* ---------- palettes (IQ cosine palettes, dark at t=0 so the "ocean" recedes) ---------- */
+const PALETTES = {
+  ember:    { label: 'Ember',    a: [0.5,0.5,0.5], b: [0.5,0.5,0.5], c: [1,1,1],   d: [0.5,0.4,0.3], core: [8,6,4] },
+  glacier:  { label: 'Glacier',  a: [0.5,0.5,0.5], b: [0.5,0.5,0.5], c: [1,1,1],   d: [0.5,0.6,0.7], core: [3,6,14] },
+  aurora:   { label: 'Aurora',   a: [0.5,0.5,0.5], b: [0.5,0.5,0.5], c: [1,1,0.5], d: [0.5,0.5,0.5], core: [2,8,6] },
+  spectrum: { label: 'Spectrum', a: [0.3,0.3,0.3], b: [0.5,0.5,0.5], c: [1,1,1],   d: [0.0,0.33,0.67], core: [10,4,4] },
+  ink:      { label: 'Ink',      a: [0.35,0.35,0.35], b: [0.65,0.65,0.65], c: [1,1,1], d: [0.5,0.5,0.5], core: [0,0,0] },
+};
+
+const state = {
+  maxIter: 1000,
+  palette: 'ember',
+  c: { re: -0.7269, im: 0.1889 }, // the classic, unmistakable Julia set
+};
+let lut = buildLUT(PALETTES[state.palette]);
+
+function buildLUT(pal) {
+  const L = new Uint8Array(LUT_SIZE * 3);
+  for (let i = 0; i < LUT_SIZE; i++) {
+    const t = i / (LUT_SIZE - 1);
+    for (let k = 0; k < 3; k++) {
+      const v = pal.a[k] + pal.b[k] * Math.cos(TAU * (pal.c[k] * t + pal.d[k]));
+      L[i * 3 + k] = Math.round(Math.max(0, Math.min(1, v)) * 255);
+    }
+  }
+  return L;
+}
+
+/* ---------- DOM ---------- */
+const $ = id => document.getElementById(id);
+const cvMandel = $('cv-mandel'), cvJulia = $('cv-julia'), cvParam = $('cv-param');
+const statusEl = $('status'), cBig = $('c-big');
+const mCenter = $('m-center'), mWidth = $('m-width'), mIters = $('m-iters'), mCursor = $('m-cursor');
+const jC = $('j-c'), jCenter = $('j-center'), jWidth = $('j-width'), jIters = $('j-iters'), jCursor = $('j-cursor');
+const iterRange = $('iter-range'), iterOut = $('iter-out');
+const presetsEl = $('presets'), chipsEl = $('chips');
+const btnAnimate = $('btn-animate'), btnReset = $('btn-reset');
+
+/* ---------- formatting ---------- */
+function fmt(v, d = 4) {
+  if (!isFinite(v)) return '—';
+  const a = Math.abs(v);
+  const s = (a !== 0 && (a < 1e-4 || a >= 1e4)) ? v.toExponential(2) : v.toFixed(d);
+  return s.replace(/-/g, '−');
+}
+function fmtC(re, im) {
+  const sign = im < 0 ? '−' : '+';
+  return `${fmt(re)} ${sign} ${fmt(Math.abs(im))}i`;
+}
+function fmtSpan(s) {
+  return s >= 0.01 ? s.toFixed(3) : s.toExponential(2).replace(/-/g, '−');
+}
+
+/* ---------- fractal view factory (chunked escape-time renderer + interaction) ---------- */
+function makeView(canvas, type, hooks) {
+  const ctx = canvas.getContext('2d');
+  const off = document.createElement('canvas');
+  const offCtx = off.getContext('2d');
+  const DEF = type === 'mandelbrot'
+    ? { cx: -0.7, cy: 0, span: 3.0 }   // x ∈ [−2.2, 0.8] — whole set visible
+    : { cx: 0, cy: 0, span: 3.4 };      // x ∈ [−1.7, 1.7]
+  const view = { ...DEF };
+  let token = 0;
+  let previewPending = false;
+  let fullTimer = 0;
+
+  function render(quality, sync) {
+    const W = canvas.width, H = canvas.height;
+    const res = quality === 'preview' ? 0.32 : 1;
+    const w = Math.max(1, Math.round(W * res));
+    const h = Math.max(1, Math.round(H * res));
+    if (off.width !== w) off.width = w;
+    if (off.height !== h) off.height = h;
+    const img = offCtx.createImageData(w, h);
+    const data = img.data;
+    const myToken = ++token;
+    const { cx, cy, span } = view;
+    const scale = span / w;
+    const maxIter = Math.max(16, Math.round(state.maxIter * (quality === 'preview' ? 0.45 : 1)));
+    const L = lut;
+    const core = PALETTES[state.palette].core;
+    const cRe = state.c.re, cIm = state.c.im;
+    const isM = type === 'mandelbrot';
+    const logMax = Math.log2(maxIter + 1);
+    const half = (h - 1) / 2;
+    let row = 0, cpu = 0;
+    const t0 = performance.now();
+    const chunk = quality === 'preview' ? 40 : 24;
+
+    function fillRow(py) {
+      const y = cy - (py - half) * scale;          // +i points up
+      let p = py * w * 4;
+      for (let px = 0; px < w; px++, p += 4) {
+        const x = (px - half) * scale + cx;
+        let zr, zi, cre, cim;
+        if (isM) { cre = x; cim = y; zr = 0; zi = 0; }
+        else     { zr = x; zi = y; cre = cRe; cim = cIm; }
+        let n = 0;
+        while (n < maxIter) {
+          const zr2 = zr * zr, zi2 = zi * zi;
+          if (zr2 + zi2 > 4) break;
+          zi = 2 * zr * zi + cim;
+          zr = zr2 - zi2 + cre;
+          n++;
+        }
+        if (n >= maxIter) {
+          data[p] = core[0]; data[p+1] = core[1]; data[p+2] = core[2];
+        } else {
+          const mag = Math.sqrt(zr * zr + zi * zi);
+          let nu = n + 1 - Math.log2(Math.log2(mag));   // smooth (fractional) escape time
+          if (nu < 0) nu = 0;
+          const t = Math.log2(nu + 1) / logMax;
+          let idx = (t * LUT_SIZE * CYCLES) | 0;
+          idx = (idx % LUT_SIZE) * 3;
+          data[p] = L[idx]; data[p+1] = L[idx+1]; data[p+2] = L[idx+2];
+        }
+        data[p+3] = 255;
+      }
+    }
+    function blit() {
+      offCtx.putImageData(img, 0, 0);
+      ctx.imageSmoothingEnabled = res < 1;
+      ctx.drawImage(off, 0, 0, W, H);
+    }
+    if (sync) {
+      for (let py = 0; py < h; py++) fillRow(py);
+      if (myToken !== token) return;
+      blit();
+      return;
+    }
+    (function step() {
+      if (myToken !== token) return;
+      const ts = performance.now();
+      const end = Math.min(row + chunk, h);
+      for (; row < end; row++) fillRow(row);
+      cpu += performance.now() - ts;
+      blit();
+      if (row < h) requestAnimationFrame(step);
+      else if (hooks.onFullDone) hooks.onFullDone(cpu);
+    })();
+  }
+
+  function schedulePreview() {
+    if (previewPending) return;
+    previewPending = true;
+    requestAnimationFrame(() => { previewPending = false; render('preview'); });
+    clearTimeout(fullTimer);
+    fullTimer = setTimeout(() => render('full'), 280);
+  }
+
+  /* interaction: wheel zoom, drag pan, pinch, double-click reset, hover readout */
+  const pointers = new Map();
+  let pinchDist = 0;
+
+  function zoomAt(mx, my, factor) {
+    const px = view.cx + (mx - 0.5) * view.span;
+    const py = view.cy - (my - 0.5) * view.span;
+    view.span = Math.min(8, Math.max(1e-9, view.span * factor));
+    view.cx = px - (mx - 0.5) * view.span;
+    view.cy = py + (my - 0.5) * view.span;
+  }
+
+  const stage = canvas.parentElement;
+  stage.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    zoomAt((e.clientX - rect.left) / rect.width, (e.clientY - rect.top) / rect.height,
+           Math.exp(e.deltaY * 0.0016));
+    hooks.onInteract();
+    schedulePreview();
+  }, { passive: false });
+
+  canvas.addEventListener('pointerdown', e => {
+    canvas.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+    }
+    canvas.classList.add('dragging');
+  });
+
+  canvas.addEventListener('pointermove', e => {
+    const rect = canvas.getBoundingClientRect();
+    if (!pointers.has(e.pointerId)) {
+      if (hooks.onHover) {
+        const x = view.cx + ((e.clientX - rect.left) / rect.width - 0.5) * view.span;
+        const y = view.cy - ((e.clientY - rect.top) / rect.height - 0.5) * view.span;
+        hooks.onHover(x, y);
+      }
+      return;
+    }
+    const prev = pointers.get(e.pointerId);
+    const cur = { x: e.clientX, y: e.clientY };
+    pointers.set(e.pointerId, cur);
+    if (pointers.size === 1) {
+      view.cx -= (cur.x - prev.x) / rect.width * view.span;
+      view.cy += (cur.y - prev.y) / rect.height * view.span;
+      hooks.onInteract();
+      schedulePreview();
+    } else if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      if (pinchDist > 0 && d > 0) {
+        zoomAt((mid.x - rect.left) / rect.width, (mid.y - rect.top) / rect.height, pinchDist / d);
+      }
+      pinchDist = d;
+      hooks.onInteract();
+      schedulePreview();
+    }
+  });
+
+  const release = e => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinchDist = 0;
+    if (pointers.size === 0) canvas.classList.remove('dragging');
+  };
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
+  canvas.addEventListener('pointerleave', () => { if (hooks.onLeave) hooks.onLeave(); });
+  canvas.addEventListener('dblclick', () => reset());
+
+  function reset() {
+    Object.assign(view, DEF);
+    hooks.onInteract();
+    render('full');
+  }
+
+  return { view, render, schedulePreview, reset };
+}
+
+/* ---------- readouts ---------- */
+let mMs = null, jMs = null;
+function refreshStatus() {
+  statusEl.textContent =
+    `518,400 px per canvas · ${state.maxIter} iters · M ${mMs == null ? '—' : mMs + ' ms'} · J ${jMs == null ? '—' : jMs + ' ms'}`;
+}
+function updateCReadouts() {
+  const s = fmtC(state.c.re, state.c.im);
+  jC.textContent = s;
+  cBig.textContent = 'c = ' + s;
+}
+function updateReadouts() {
+  const mv = mandelView.view, jv = juliaView.view;
+  mCenter.textContent = fmtC(mv.cx, mv.cy);
+  mWidth.textContent = fmtSpan(mv.span);
+  mIters.textContent = state.maxIter;
+  jCenter.textContent = fmtC(jv.cx, jv.cy);
+  jWidth.textContent = fmtSpan(jv.span);
+  jIters.textContent = state.maxIter;
+  updateCReadouts();
+  refreshStatus();
+}
+
+/* ---------- the two main views ---------- */
+const mandelView = makeView(cvMandel, 'mandelbrot', {
+  onInteract: updateReadouts,
+  onHover: (x, y) => { mCursor.textContent = fmtC(x, y); },
+  onLeave: () => { mCursor.textContent = '—'; },
+  onFullDone: ms => { mMs = Math.round(ms); refreshStatus(); },
+});
+const juliaView = makeView(cvJulia, 'julia', {
+  onInteract: updateReadouts,
+  onHover: (x, y) => { jCursor.textContent = fmtC(x, y); },
+  onLeave: () => { jCursor.textContent = '—'; },
+  onFullDone: ms => { jMs = Math.round(ms); refreshStatus(); },
+});
+
+/* ---------- parameter map (a small Mandbrot that picks c) ---------- */
+const PARAM = { cx: -0.7, cy: 0, span: 3.0 };
+const paramBase = document.createElement('canvas');
+paramBase.width = 300; paramBase.height = 300;
+const pctx = paramBase.getContext('2d');
+const pctxMain = cvParam.getContext('2d');
+
+function renderParamBase() {
+  const W = 300, H = 300;
+  const img = pctx.createImageData(W, H);
+  const data = img.data;
+  const scale = PARAM.span / W;
+  const maxIter = 90;
+  const L = lut;
+  const core = PALETTES[state.palette].core;
+  const logMax = Math.log2(maxIter + 1);
+  const half = (H - 1) / 2;
+  for (let py = 0; py < H; py++) {
+    const y = PARAM.cy - (py - half) * scale;
+    let p = py * W * 4;
+    for (let px = 0; px < W; px++, p += 4) {
+      const x = (px - half) * scale + PARAM.cx;
+      let zr = 0, zi = 0, cre = x, cim = y, n = 0;
+      while (n < maxIter) {
+        const zr2 = zr * zr, zi2 = zi * zi;
+        if (zr2 + zi2 > 4) break;
+        zi = 2 * zr * zi + cim;
+        zr = zr2 - zi2 + cre;
+        n++;
+      }
+      if (n >= maxIter) {
+        data[p] = core[0]; data[p+1] = core[1]; data[p+2] = core[2];
+      } else {
+        const mag = Math.sqrt(zr * zr + zi * zi);
+        let nu = n + 1 - Math.log2(Math.log2(mag));
+        if (nu < 0) nu = 0;
+        const t = Math.log2(nu + 1) / logMax;
+        let idx = (t * LUT_SIZE * CYCLES) | 0;
+        idx = (idx % LUT_SIZE) * 3;
+        data[p] = L[idx]; data[p+1] = L[idx+1]; data[p+2] = L[idx+2];
+      }
+      data[p+3] = 255;
+    }
+  }
+  pctx.putImageData(img, 0, 0);
+}
+
+function drawMarker() {
+  pctxMain.clearRect(0, 0, 300, 300);
+  pctxMain.drawImage(paramBase, 0, 0);
+  const px = (state.c.re - (PARAM.cx - PARAM.span / 2)) / PARAM.span * 300;
+  const py = (PARAM.cy + PARAM.span / 2 - state.c.im) / PARAM.span * 300;
+  pctxMain.strokeStyle = 'rgba(0,0,0,0.6)';
+  pctxMain.lineWidth = 4;
+  pctxMain.beginPath(); pctxMain.arc(px, py, 7, 0, TAU); pctxMain.stroke();
+  pctxMain.strokeStyle = '#ffffff';
+  pctxMain.lineWidth = 1.5;
+  pctxMain.beginPath(); pctxMain.arc(px, py, 7, 0, TAU); pctxMain.stroke();
+  pctxMain.beginPath();
+  pctxMain.moveTo(px - 15, py); pctxMain.lineTo(px - 8, py);
+  pctxMain.moveTo(px + 8, py);  pctxMain.lineTo(px + 15, py);
+  pctxMain.moveTo(px, py - 15); pctxMain.lineTo(px, py - 8);
+  pctxMain.moveTo(px, py + 8);  pctxMain.lineTo(px, py + 15);
+  pctxMain.stroke();
+}
+
+let paramDown = false;
+function paramToC(e) {
+  const rect = cvParam.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) / rect.width;
+  const my = (e.clientY - rect.top) / rect.height;
+  return { re: PARAM.cx + (mx - 0.5) * PARAM.span, im: PARAM.cy - (my - 0.5) * PARAM.span };
+}
+cvParam.addEventListener('pointerdown', e => {
+  paramDown = true;
+  cvParam.setPointerCapture(e.pointerId);
+  stopAnimation();
+  clearPresetActive();
+  const c = paramToC(e);
+  setC(c.re, c.im);
+});
+cvParam.addEventListener('pointermove', e => {
+  if (!paramDown) return;
+  const c = paramToC(e);
+  setC(c.re, c.im);
+});
+['pointerup', 'pointercancel'].forEach(t => cvParam.addEventListener(t, () => { paramDown = false; }));
+
+function setC(re, im) {
+  state.c.re = re;
+  state.c.im = im;
+  drawMarker();
+  updateCReadouts();
+  juliaView.schedulePreview();
+}
+
+/* ---------- presets ---------- */
+const PRESETS = [
+  { name: 'Classic',  re: -0.7269, im: 0.1889 },
+  { name: 'Spiral',   re: 0.355,   im: 0.355 },
+  { name: 'Dendrite', re: 0.0,     im: 1.0 },
+  { name: 'Dust',     re: -0.8,    im: 0.156 },
+  { name: 'Whorl',    re: 0.285,   im: 0.01 },
+];
+function clearPresetActive() {
+  presetsEl.querySelectorAll('.preset.active').forEach(x => x.classList.remove('active'));
+}
+PRESETS.forEach(p => {
+  const b = document.createElement('button');
+  b.className = 'preset';
+  b.textContent = p.name;
+  b.title = `c = ${fmtC(p.re, p.im)}`;
+  b.addEventListener('click', () => {
+    clearPresetActive();
+    b.classList.add('active');
+    tweenC(p);
+  });
+  presetsEl.appendChild(b);
+});
+
+let tweenRaf = 0;
+function tweenC(target) {
+  stopAnimation();
+  cancelAnimationFrame(tweenRaf);
+  const from = { ...state.c };
+  const t0 = performance.now();
+  const D = 650;
+  function frame(now) {
+    const t = Math.min(1, (now - t0) / D);
+    const e = 1 - Math.pow(1 - t, 3);
+    state.c.re = from.re + (target.re - from.re) * e;
+    state.c.im = from.im + (target.im - from.im) * e;
+    drawMarker();
+    updateCReadouts();
+    juliaView.render('preview', true);
+    if (t < 1) tweenRaf = requestAnimationFrame(frame);
+    else juliaView.render('full');
+  }
+  tweenRaf = requestAnimationFrame(frame);
+}
+
+/* ---------- animate c (Lissajous drift) ---------- */
+const anim = { on: false, t: 0, base: null, last: 0, raf: 0 };
+function startAnimation() {
+  cancelAnimationFrame(tweenRaf);
+  anim.on = true;
+  anim.base = { ...state.c };
+  anim.t = 0;
+  anim.last = performance.now();
+  btnAnimate.classList.add('on');
+  btnAnimate.innerHTML = '<span class="dot"></span>Stop animation';
+  const loop = now => {
+    if (!anim.on) return;
+    const dt = Math.min(0.1, (now - anim.last) / 1000);
+    anim.last = now;
+    anim.t += dt;
+    state.c.re = anim.base.re + 0.055 * Math.cos(anim.t * 0.5);
+    state.c.im = anim.base.im + 0.055 * Math.sin(anim.t * 0.8);
+    drawMarker();
+    updateCReadouts();
+    juliaView.render('preview', true);
+    anim.raf = requestAnimationFrame(loop);
+  };
+  anim.raf = requestAnimationFrame(loop);
+}
+function stopAnimation() {
+  if (!anim.on) return;
+  anim.on = false;
+  cancelAnimationFrame(anim.raf);
+  btnAnimate.classList.remove('on');
+  btnAnimate.innerHTML = '<span class="dot"></span>Animate c';
+  clearPresetActive();
+  juliaView.render('full');
+}
+btnAnimate.addEventListener('click', () => anim.on ? stopAnimation() : startAnimation());
+btnReset.addEventListener('click', () => { mandelView.reset(); juliaView.reset(); });
+
+/* ---------- iteration slider ---------- */
+let iterTimer = 0;
+iterRange.addEventListener('input', () => {
+  state.maxIter = +iterRange.value;
+  iterOut.textContent = state.maxIter;
+  updateReadouts();
+  clearTimeout(iterTimer);
+  iterTimer = setTimeout(() => { mandelView.render('full'); juliaView.render('full'); }, 150);
+});
+
+/* ---------- palette chips ---------- */
+Object.entries(PALETTES).forEach(([key, pal]) => {
+  const b = document.createElement('button');
+  b.className = 'chip' + (key === state.palette ? ' active' : '');
+  b.dataset.k = key;
+  const sw = document.createElement('span');
+  sw.className = 'swatch';
+  const stops = [];
+  for (let i = 0; i <= 6; i++) {
+    const t = i / 6;
+    const s = [];
+    for (let k = 0; k < 3; k++) {
+      const v = pal.a[k] + pal.b[k] * Math.cos(TAU * (pal.c[k] * t + pal.d[k]));
+      s.push(Math.round(Math.max(0, Math.min(1, v)) * 255));
+    }
+    stops.push(`rgb(${s[0]},${s[1]},${s[2]}) ${Math.round(t * 100)}%`);
+  }
+  sw.style.background = `linear-gradient(90deg, ${stops.join(',')})`;
+  const label = document.createElement('span');
+  label.textContent = pal.label;
+  b.append(sw, label);
+  b.addEventListener('click', () => {
+    state.palette = key;
+    lut = buildLUT(pal);
+    chipsEl.querySelectorAll('.chip').forEach(x => x.classList.toggle('active', x.dataset.k === key));
+    renderParamBase();
+    drawMarker();
+    mandelView.render('full');
+    juliaView.render('full');
+  });
+  chipsEl.appendChild(b);
+});
+
+/* ---------- boot ---------- */
+renderParamBase();
+drawMarker();
+updateReadouts();
+mandelView.render('full');
+juliaView.render('full');
+})();
+</script>
+</body>
+</html>

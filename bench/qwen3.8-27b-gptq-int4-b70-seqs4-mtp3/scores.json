@@ -1,0 +1,16 @@
+{
+  "reasoning": 10,
+  "creative": 8,
+  "constraints": 10,
+  "fib": 10,
+  "json": 10,
+  "breakout": 10,
+  "delta": 10,
+  "fractal": 10,
+  "_notes": {
+    "method": "objective checks by harness (fib executed, json schema-validated, sentence count) + headless play-test (playtest.py) + manual output review (creative story complete with twist, reasoning riddle correct and concise).",
+    "games": "All 3: 0 JS errors. breakout: started+painted+animates+responds, live HUD (score 000050 after input, lives, powerups). delta: painted+animates+responds, keyboard controls verified. fractal: 3 canvases painted (Mandelbrot 720x720, Julia 720x720, 300x300 preview, 1000 iters, render times 628/152 ms shown), responds=True; animates=False is by design for a redraw-on-interaction fractal explorer, not a failure.",
+    "creative": "Complete ~100-word story with coherent setup and twist (clone-log concept); prose competent, not exceptional -> 8, matching prior B70 rows.",
+    "reasoning": "'All but 9 die' riddle answered correctly (9 survive) with correct minimal derivation -> 10."
+  }
+}

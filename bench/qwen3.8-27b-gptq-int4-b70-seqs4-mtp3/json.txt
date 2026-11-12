@@ -1,0 +1,3 @@
+
+
+{"name":"Alice Johnson","age":28,"hobbies":["reading","hiking","cooking"]}
