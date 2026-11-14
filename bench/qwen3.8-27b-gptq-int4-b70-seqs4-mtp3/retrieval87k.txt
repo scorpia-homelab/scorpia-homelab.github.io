@@ -1,0 +1,1 @@
+prompt 70060 tok, got 'Rotterdam=8621, Quito=6481, Osaka=5024', want {'Rotterdam': '8621', 'Quito': '6481', 'Osaka': '5024'}, 3/3
