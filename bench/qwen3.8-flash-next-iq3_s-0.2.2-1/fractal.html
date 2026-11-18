@@ -1,858 +1,1254 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>z ↦ z² + c — Mandelbrot &amp; Julia, computed live</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Two Plates · z ← z² + c — the Mandelbrot set &amp; its Julia fibres</title>
 <style>
+/* ═══════════════════════════════════════════════════════════════
+   TOKENS
+   ═══════════════════════════════════════════════════════════════ */
 :root{
-  --bg:#080a10; --panel:#0d1119; --ink:#eceae5; --ink-2:#c3c8d2; --muted:#8992a4;
-  --line:rgba(255,255,255,.09); --line-2:rgba(255,255,255,.045);
-  --brass:#e3ab5f; --glacier:#68cfc2; --ember:#e2683f;
+  --ink:#0a0d13;
+  --panel:#0f141c;
+  --line:rgba(150,175,205,.17);
+  --line-soft:rgba(150,175,205,.09);
+  --text:#e9eef5;
+  --muted:#94a3b6;
+  --dim:#657488;
+  --amber:#f2a63b;
+  --jade:#5fd0b0;
+  --ice:#7fc7e8;
+  --rose:#e2657a;
+  --paper:#f2ece1;
+  --paper-ink:#15181d;
+  --paper-dim:#5d6570;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua","Hoefler Text",Georgia,"Times New Roman",serif;
+  --sans:"Avenir Next",Avenir,"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
   --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
-  --sans:"Optima","Avenir Next","Segoe UI",system-ui,-apple-system,"Helvetica Neue",sans-serif;
-  --display:"Didot","Bodoni MT","Hoefler Text","Playfair Display","Times New Roman",serif;
 }
 *{box-sizing:border-box}
-html{scroll-behavior:smooth}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.62;overflow-x:hidden;-webkit-font-smoothing:antialiased}
-::selection{background:rgba(227,171,95,.28)}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--ink);color:var(--text);
+  font-family:var(--sans);font-size:16px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;overflow-x:hidden;
+}
 
-/* ---------- ambient layers ---------- */
-.ambient{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none}
-.ambient .grid{position:absolute;inset:-15%;
-  background-image:linear-gradient(rgba(255,255,255,.032) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.032) 1px,transparent 1px);
-  background-size:72px 72px;
-  -webkit-mask-image:radial-gradient(120% 90% at 30% 0%,#000 20%,transparent 78%);
-  mask-image:radial-gradient(120% 90% at 30% 0%,#000 20%,transparent 78%);}
-.ambient .glow{position:absolute;border-radius:50%;filter:blur(110px);opacity:.30}
-.g1{width:52vw;height:52vw;left:-14vw;top:-18vw;background:#12475c;animation:drift1 34s ease-in-out infinite alternate}
-.g2{width:46vw;height:46vw;right:-12vw;bottom:-16vw;background:#4a2418;animation:drift2 41s ease-in-out infinite alternate}
-.g3{width:30vw;height:30vw;left:44%;top:38%;background:#2a2b4a;opacity:.18;animation:drift1 55s ease-in-out infinite alternate-reverse}
-@keyframes drift1{to{transform:translate3d(6vw,4vh,0) scale(1.12)}}
-@keyframes drift2{to{transform:translate3d(-5vw,-5vh,0) scale(1.08)}}
-.ambient .vig{position:absolute;inset:0;background:radial-gradient(115% 80% at 50% 40%,transparent 40%,rgba(0,0,0,.62) 100%)}
+/* ═══════════════════════════════════════════════════════════════
+   AMBIENT BACKGROUND — reticle rings + coordinate grid
+   ═══════════════════════════════════════════════════════════════ */
+.bg{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none}
+.bg i{position:absolute;display:block}
+.bg__grid{
+  inset:-10%;
+  background-image:
+    linear-gradient(to right,rgba(150,175,205,.055) 1px,transparent 1px),
+    linear-gradient(to bottom,rgba(150,175,205,.055) 1px,transparent 1px);
+  background-size:56px 56px;
+  -webkit-mask-image:radial-gradient(120% 90% at 30% 10%,#000 0%,transparent 78%);
+          mask-image:radial-gradient(120% 90% at 30% 10%,#000 0%,transparent 78%);
+}
+.bg__rings{
+  width:150vmax;height:150vmax;left:-40vmax;top:-55vmax;
+  background:repeating-radial-gradient(circle at 50% 50%,
+    rgba(127,199,232,.055) 0 1px,transparent 1px 92px);
+  animation:drift 90s linear infinite;opacity:.85;
+}
+.bg__rings--b{
+  left:auto;right:-55vmax;top:auto;bottom:-70vmax;
+  background:repeating-radial-gradient(circle at 50% 50%,
+    rgba(242,166,59,.05) 0 1px,transparent 1px 128px);
+  animation-duration:130s;animation-direction:reverse;
+}
+@keyframes drift{from{transform:rotate(0deg) scale(1)}50%{transform:rotate(180deg) scale(1.06)}to{transform:rotate(360deg) scale(1)}}
+.bg__vig{inset:0;background:radial-gradient(120% 80% at 50% 0%,transparent 40%,rgba(4,6,9,.85) 100%)}
 
-/* ---------- top bar ---------- */
-.topbar{position:sticky;top:0;z-index:60;display:flex;gap:18px;justify-content:space-between;align-items:center;flex-wrap:wrap;
-  padding:9px clamp(14px,3vw,40px);background:rgba(8,10,16,.86);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
-.tb-title{font-family:var(--display);font-size:19px;letter-spacing:.01em}
-.mark{color:var(--brass);margin-right:8px}
-.tb-sub{color:var(--muted);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;margin-left:12px}
-.tb-right{display:flex;gap:16px;flex-wrap:wrap}
-.tk{display:flex;gap:7px;align-items:baseline;font-size:11.5px}
-.tk em{font-style:normal;color:var(--muted);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase}
-.tk b{font-weight:500;color:var(--ink-2)}
-#tkStatus{color:var(--glacier)}
-.mono{font-family:var(--mono)}
+/* ═══════════════════════════════════════════════════════════════
+   SHELL
+   ═══════════════════════════════════════════════════════════════ */
+.wrap{max-width:1460px;margin:0 auto;padding:clamp(18px,3vw,46px) clamp(14px,3vw,44px) 0}
 
-/* ---------- hero ---------- */
-.hero{position:relative;display:grid;grid-template-columns:minmax(0,1.55fr) minmax(230px,.75fr);gap:clamp(22px,4vw,64px);align-items:end;
-  padding:clamp(34px,6vw,80px) clamp(14px,3vw,40px) 26px}
-.hero::before,.hero::after{content:"";position:absolute;border-radius:50%;pointer-events:none;border:1px dashed rgba(255,255,255,.10)}
-.hero::before{right:4%;top:6%;width:min(34vw,400px);aspect-ratio:1;animation:spin 120s linear infinite}
-.hero::after{right:9%;top:16%;width:min(20vw,230px);aspect-ratio:1;border-style:solid;border-color:rgba(227,171,95,.14);animation:spin 78s linear infinite reverse}
-@keyframes spin{to{transform:rotate(360deg)}}
-.eyebrow{margin:0;font-family:var(--mono);font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--glacier)}
-.formula{font-family:var(--display);font-weight:400;font-size:clamp(3rem,10.4vw,8.6rem);line-height:.94;letter-spacing:-.02em;margin:.1em 0 .28em;white-space:nowrap}
-.formula i{font-style:italic}
-.formula .op{color:var(--muted);padding:0 .1em}
-.formula .cc{color:var(--brass);font-style:italic}
-.formula sub,.formula sup{font-family:var(--mono);font-size:.3em;letter-spacing:0;bottom:-.35em}
-.formula sup{top:-.75em}
-.deck{margin:0;max-width:62ch;color:var(--ink-2);font-size:clamp(15px,1.35vw,18px)}
-.deck b{color:var(--ink);font-weight:600}
-.facts{margin:0;display:grid;gap:0}
-.facts>div{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-bottom:1px dotted rgba(255,255,255,.14)}
-.facts dt{font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
-.facts dd{margin:0;font-family:var(--mono);font-size:12.5px;color:var(--ink-2);text-align:right}
+/* ── masthead ─────────────────────────────────────────────── */
+.masthead{
+  display:grid;grid-template-columns:minmax(0,1.45fr) minmax(260px,.55fr);
+  gap:clamp(20px,3vw,48px);align-items:end;
+  padding-bottom:22px;border-bottom:1px solid var(--line);
+}
+.eyebrow{
+  margin:0 0 14px;font-family:var(--mono);font-size:.66rem;
+  letter-spacing:.26em;text-transform:uppercase;color:var(--dim);
+  display:flex;gap:12px;align-items:center;flex-wrap:wrap;
+}
+.eyebrow b{color:var(--amber);font-weight:400}
+.eyebrow s{width:34px;height:1px;background:var(--line);text-decoration:none}
+h1{
+  margin:0;font-family:var(--serif);font-weight:400;
+  font-size:clamp(2.35rem,5.6vw,4.7rem);line-height:.94;letter-spacing:-.022em;
+}
+h1 .a{color:var(--amber)}
+h1 .b{font-style:italic;color:var(--ice)}
+h1 small{
+  display:block;font-family:var(--mono);font-size:.62rem;font-weight:400;
+  letter-spacing:.24em;text-transform:uppercase;color:var(--dim);margin-top:16px;
+}
+.lede{margin:18px 0 0;max-width:56ch;color:var(--muted);font-size:1.02rem}
+.lede b{color:var(--text);font-weight:600}
 
-/* ---------- console ---------- */
-.console{display:flex;flex-wrap:wrap;gap:14px 26px;align-items:center;
-  padding:13px clamp(14px,3vw,40px);border-top:1px solid var(--line);border-bottom:1px solid var(--line);
-  background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,0))}
-.ctl{display:flex;align-items:center;gap:10px}
-.ctl>label,.lbl{font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
-.ctl output{font-size:11px;color:var(--ink-2);min-width:34px}
-input[type=range]{-webkit-appearance:none;appearance:none;height:2px;background:rgba(255,255,255,.17);width:118px;border-radius:2px;cursor:pointer}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--brass);box-shadow:0 0 0 3px rgba(227,171,95,.14);transition:transform .18s,box-shadow .18s}
-input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3);box-shadow:0 0 0 5px rgba(227,171,95,.18)}
-input[type=range]::-moz-range-thumb{width:12px;height:12px;border:0;border-radius:50%;background:var(--brass)}
-.tgl{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;padding:7px 12px;border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer;border-radius:2px;transition:.22s}
-.tgl:hover{border-color:var(--glacier);color:var(--ink)}
-.tgl[aria-pressed=true]{background:var(--glacier);border-color:var(--glacier);color:#06121a}
-.seg{display:inline-flex;border:1px solid var(--line);border-radius:2px}
-.seg button{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;padding:7px 11px;background:transparent;border:0;color:var(--muted);cursor:pointer;transition:.2s}
-.seg button:hover{color:var(--ink)}
-.seg button.on{background:rgba(255,255,255,.10);color:var(--ink)}
+.formula{
+  border:1px solid var(--line);background:linear-gradient(180deg,rgba(19,26,36,.85),rgba(10,14,20,.6));
+  padding:18px 20px;position:relative;
+}
+.formula::after{
+  content:'';position:absolute;right:-1px;bottom:-1px;width:13px;height:13px;
+  border:1px solid var(--jade);opacity:.6;border-left:0;border-top:0;
+}
+.formula__eq{
+  font-family:var(--serif);font-size:1.9rem;letter-spacing:.01em;color:var(--text);
+  display:flex;align-items:baseline;gap:.12em;flex-wrap:wrap;
+}
+.formula__eq .v{font-style:italic;color:var(--amber)}
+.formula__eq sub,.formula__eq sup{font-family:var(--mono);font-size:.5em;color:var(--muted)}
+.formula dl{margin:16px 0 0;display:grid;grid-template-columns:auto 1fr;gap:7px 12px;
+  font-size:.78rem;line-height:1.35}
+.formula dt{font-family:var(--serif);font-size:1.05rem;color:var(--ice);text-align:right}
+.formula dd{margin:0;color:var(--muted)}
+.formula__note{margin:14px 0 0;padding-top:11px;border-top:1px dashed var(--line);
+  font-family:var(--mono);font-size:.68rem;letter-spacing:.06em;color:var(--dim)}
+.formula__note span{color:var(--rose)}
 
-/* ---------- plates ---------- */
-.plates{display:grid;grid-template-columns:minmax(0,1.34fr) minmax(0,1fr);gap:clamp(16px,2.4vw,32px);padding:clamp(20px,3.2vw,42px) clamp(14px,3vw,40px)}
-.plate{position:relative;display:flex;flex-direction:column;border:1px solid var(--line);
-  background:linear-gradient(180deg,#0e131c,#0a0d14);box-shadow:0 40px 70px -40px rgba(0,0,0,.9)}
-.plate-head{display:flex;gap:14px;align-items:baseline;padding:15px 18px 12px;border-bottom:1px solid var(--line)}
-.plate-num{font-family:var(--display);font-size:36px;line-height:1;color:var(--brass)}
-.plate-j .plate-num{color:var(--ember)}
-.plate-head h2{margin:0;font-family:var(--display);font-weight:400;font-size:clamp(1.45rem,2.3vw,2.05rem);letter-spacing:-.01em}
-.sub{margin:2px 0 0;font-size:12.5px;color:var(--muted)}
-.plate-status{margin-left:auto;display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--muted);white-space:nowrap}
-.dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.22);transition:.3s}
-.is-busy .dot{background:var(--glacier);animation:pulse .95s ease-in-out infinite}
-@keyframes pulse{50%{transform:scale(1.7);box-shadow:0 0 0 4px rgba(104,207,194,.14)}}
-.stage{position:relative;aspect-ratio:4/3;background:#04060b;overflow:hidden}
-.plate-j .stage{aspect-ratio:1/1}
-.stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-.stage .ov{pointer-events:none}
-.stage::after{content:"";position:absolute;inset:9px;border:1px solid rgba(255,255,255,.07);pointer-events:none}
-.stage:hover{cursor:crosshair}
-.stage.panning{cursor:grabbing}
-.scan{position:absolute;left:0;right:0;height:26%;pointer-events:none;opacity:0;
-  background:linear-gradient(180deg,transparent,rgba(104,207,194,.10),transparent)}
-.is-busy .scan{opacity:1;animation:scan 1.5s linear infinite}
-@keyframes scan{from{transform:translateY(-120%)}to{transform:translateY(420%)}}
-.progress{height:2px;background:rgba(255,255,255,.06)}
-.progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--glacier),var(--brass));transition:width .2s}
-.plate-j .progress i{background:linear-gradient(90deg,var(--ember),var(--brass))}
-.plate-foot{display:grid;grid-template-columns:auto minmax(0,1fr);gap:18px;padding:15px 18px 18px;border-top:1px solid var(--line)}
-.plate-j .plate-foot{grid-template-columns:minmax(0,1fr)}
-.locator{margin:0;width:150px}
-.loc-stage{position:relative;width:150px;height:112px;border:1px solid var(--line-2);background:#04060b}
-.loc-stage canvas{position:absolute;inset:0;width:100%;height:100%}
-.locator figcaption{margin-top:6px;font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
-.foot-main{display:flex;flex-direction:column;gap:13px;min-width:0}
-.readouts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:5px 18px}
-.readouts span{display:flex;justify-content:space-between;gap:10px;border-bottom:1px dotted rgba(255,255,255,.12);padding-bottom:4px;font-family:var(--mono);font-size:11.5px}
-.readouts em{font-style:normal;color:var(--muted);font-size:9px;letter-spacing:.16em;text-transform:uppercase}
+/* ── stage ────────────────────────────────────────────────── */
+.stage{
+  display:grid;grid-template-columns:minmax(0,1.28fr) minmax(320px,.72fr);
+  gap:22px;margin-top:26px;align-items:start;
+}
+.col{display:flex;flex-direction:column;gap:18px;min-width:0}
+
+.plate{
+  position:relative;padding:14px 16px 12px;
+  background:linear-gradient(180deg,rgba(19,26,36,.92),rgba(11,15,21,.92));
+  border:1px solid var(--line);border-radius:2px;
+  box-shadow:0 30px 70px -38px rgba(0,0,0,.95);
+  transition:border-color .35s ease,box-shadow .35s ease;
+}
+.plate:hover{border-color:rgba(150,175,205,.3)}
+.plate::before,.plate::after{
+  content:'';position:absolute;width:13px;height:13px;border:1px solid var(--amber);opacity:.55;
+  transition:opacity .3s;
+}
+.plate::before{top:-1px;left:-1px;border-right:0;border-bottom:0}
+.plate::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
+.plate:hover::before,.plate:hover::after{opacity:1}
+
+.plate__head{display:flex;gap:14px;align-items:flex-start}
+.plate__id{
+  font-family:var(--serif);font-size:2.1rem;line-height:1;color:var(--amber);
+  opacity:.85;padding-top:2px;
+}
+.plate__head h2{
+  margin:0;font-family:var(--serif);font-weight:400;font-size:1.5rem;letter-spacing:-.01em;
+}
+.plate__sub{margin:3px 0 0;font-size:.79rem;color:var(--muted);max-width:46ch}
+.plate__sub code{font-family:var(--mono);color:var(--ice);font-size:.76rem}
+.badge{
+  margin-left:auto;font-family:var(--mono);font-size:.63rem;letter-spacing:.08em;
+  padding:6px 9px;border:1px solid var(--line);color:var(--muted);white-space:nowrap;
+  background:rgba(255,255,255,.02);transition:.3s;
+}
+.badge.on{border-color:rgba(95,208,176,.55);color:var(--jade);background:rgba(95,208,176,.07)}
+.badge.off{border-color:rgba(226,101,122,.5);color:var(--rose);background:rgba(226,101,122,.07)}
+
+.frame{position:relative;margin-top:13px;background:#04060a;border:1px solid var(--line-soft);overflow:hidden}
+.frame canvas.view{display:block;width:100%;aspect-ratio:1/1;touch-action:none;cursor:crosshair}
+.frame--j canvas.view{aspect-ratio:1/1}
+canvas.ovl{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.scan{position:absolute;left:0;top:0;height:2px;width:100%;pointer-events:none;opacity:0;transition:opacity .25s}
+.scan i{display:block;height:100%;width:100%;background:linear-gradient(90deg,var(--amber),var(--jade));
+  transform-origin:0 50%;transform:scaleX(0)}
+.rendering .scan{opacity:.95}
+.hint{
+  position:absolute;right:8px;bottom:8px;font-family:var(--mono);font-size:.6rem;
+  letter-spacing:.1em;color:rgba(233,238,245,.5);background:rgba(4,6,10,.62);
+  padding:5px 8px;border:1px solid rgba(150,175,205,.14);pointer-events:none;
+  transition:opacity .6s ease;text-transform:uppercase;
+}
+.hint.gone{opacity:0}
+.warn{
+  position:absolute;left:8px;top:8px;font-family:var(--mono);font-size:.6rem;letter-spacing:.08em;
+  color:#0d0f13;background:var(--amber);padding:4px 7px;pointer-events:none;opacity:0;transition:opacity .3s;
+}
+.warn.show{opacity:.92}
+
+.readout{
+  display:flex;flex-wrap:wrap;gap:4px 22px;margin-top:11px;padding-top:10px;
+  border-top:1px solid var(--line-soft);
+}
+.readout div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.readout span{font-family:var(--mono);font-size:.58rem;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+.readout b{font-family:var(--mono);font-size:.78rem;font-weight:400;color:var(--text);white-space:nowrap}
+.readout b.hi{color:var(--amber)}
+
+/* ── console ──────────────────────────────────────────────── */
+.console{display:grid;gap:12px}
+.grp{border:1px solid var(--line-soft);background:rgba(13,18,25,.66);padding:13px 14px 15px;
+  transition:border-color .3s}
+.grp:hover{border-color:var(--line)}
+.grp h3{
+  margin:0 0 12px;font-family:var(--mono);font-size:.6rem;letter-spacing:.24em;
+  text-transform:uppercase;color:var(--dim);display:flex;justify-content:space-between;gap:10px;align-items:center;
+}
+.grp h3 em{font-style:normal;color:var(--ice);letter-spacing:.06em}
+.ctl{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center;margin-bottom:9px}
+.ctl:last-of-type{margin-bottom:0}
+.ctl label{font-size:.79rem;color:var(--muted)}
+.ctl output{font-family:var(--mono);font-size:.73rem;color:var(--ice);justify-self:end}
+input[type=range]{
+  -webkit-appearance:none;appearance:none;grid-column:1/-1;width:100%;height:20px;
+  background:transparent;cursor:ew-resize;margin:0;
+}
+input[type=range]::-webkit-slider-runnable-track{height:2px;background:rgba(150,175,205,.22)}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:11px;height:11px;margin-top:-4.5px;border-radius:50%;
+  background:var(--text);box-shadow:0 0 0 3px rgba(242,166,59,.22);transition:transform .16s,box-shadow .16s;
+}
+input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.3);box-shadow:0 0 0 4px rgba(242,166,59,.35)}
+input[type=range]::-moz-range-track{height:2px;background:rgba(150,175,205,.22)}
+input[type=range]::-moz-range-thumb{width:11px;height:11px;border:0;border-radius:50%;background:var(--text);
+  box-shadow:0 0 0 3px rgba(242,166,59,.22)}
+
 .chips{display:flex;flex-wrap:wrap;gap:6px}
-.chip{font-family:var(--mono);font-size:10.5px;padding:7px 10px;border:1px solid var(--line);background:rgba(255,255,255,.02);color:var(--muted);cursor:pointer;border-radius:2px;transition:.2s}
-.chip:hover{color:var(--ink);border-color:rgba(227,171,95,.55);transform:translateY(-1px)}
-.chip.on{color:var(--brass);border-color:rgba(227,171,95,.55);background:rgba(227,171,95,.09)}
-.foot-row{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
-.swatches{display:flex;gap:5px}
-.sw{width:36px;height:15px;border:1px solid var(--line);cursor:pointer;padding:0;transition:.2s;border-radius:1px}
-.sw:hover{transform:translateY(-2px)}
-.sw.on{outline:1px solid var(--ink);outline-offset:2px}
-.cbox{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
-.cval{font-size:clamp(19px,2.4vw,28px);letter-spacing:.01em;color:var(--ink)}
-.badge{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;padding:5px 9px;border-radius:2px;border:1px solid rgba(104,207,194,.4);color:var(--glacier);background:rgba(104,207,194,.08)}
-.badge.out{border-color:rgba(226,104,63,.45);color:var(--ember);background:rgba(226,104,63,.08)}
-.sliders{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px 20px}
-.sliders label{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
-.sliders output{font-size:11px;color:var(--ink-2);min-width:52px;text-align:right}
-.pin{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;padding:5px 9px;border-radius:2px;border:1px dashed rgba(255,255,255,.25);color:var(--muted)}
-.pin.on{border-style:solid;border-color:rgba(227,171,95,.6);color:var(--brass);background:rgba(227,171,95,.08)}
+.chip{
+  font-family:var(--mono);font-size:.66rem;letter-spacing:.08em;padding:7px 10px;
+  border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--muted);
+  cursor:pointer;border-radius:1px;transition:transform .16s,color .16s,border-color .16s,background .16s;
+}
+.chip:hover{color:var(--text);border-color:var(--amber);transform:translateY(-2px)}
+.chip[aria-pressed=true]{background:var(--amber);color:#141008;border-color:var(--amber)}
+.chip.jade[aria-pressed=true]{background:var(--jade);border-color:var(--jade);color:#08130f}
 
-/* ---------- atlas ---------- */
-.sec-head{display:flex;align-items:baseline;gap:16px;padding:0 clamp(14px,3vw,40px) 16px}
-.sec-num{font-family:var(--display);font-size:clamp(30px,4vw,54px);line-height:1;color:rgba(255,255,255,.16)}
-.sec-head h2{margin:0;font-family:var(--display);font-weight:400;font-size:clamp(1.5rem,3vw,2.4rem);letter-spacing:-.01em}
-.sec-head p{margin:0;color:var(--muted);font-size:13px;max-width:46ch}
-.atlas{padding:clamp(22px,3vw,40px) 0 8px}
-.strip{display:flex;gap:14px;overflow-x:auto;padding:2px clamp(14px,3vw,40px) 16px;scroll-snap-type:x proximity}
-.strip::-webkit-scrollbar{height:6px}
-.strip::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16)}
-.atlas-item{flex:0 0 auto;width:172px;padding:9px;background:rgba(255,255,255,.02);border:1px solid var(--line);text-align:left;cursor:pointer;transition:.25s;scroll-snap-align:start;color:inherit}
-.atlas-item:hover{transform:translateY(-4px);border-color:rgba(104,207,194,.5);background:rgba(104,207,194,.05)}
-.ai-stage{position:relative;width:100%;aspect-ratio:1/1;background:#04060b}
-.ai-stage canvas{position:absolute;inset:0;width:100%;height:100%}
-.ai-name{display:block;margin-top:9px;font-family:var(--display);font-size:16px}
-.ai-c{display:block;font-size:10.5px;color:var(--ink-2);margin-top:2px}
-.ai-tag{display:block;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--glacier);margin-top:5px}
-.ai-tag.no{color:var(--ember)}
+.pals{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.pal{
+  border:1px solid var(--line);background:transparent;padding:5px 6px 6px;cursor:pointer;
+  text-align:left;transition:transform .16s,border-color .16s;border-radius:1px;
+}
+.pal:hover{transform:translateY(-2px);border-color:rgba(150,175,205,.45)}
+.pal[aria-pressed=true]{border-color:var(--amber);box-shadow:0 0 0 1px rgba(242,166,59,.35)}
+.pal .sw{display:block;height:9px;width:100%}
+.pal .nm{display:block;margin-top:5px;font-family:var(--mono);font-size:.58rem;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted)}
+.pal[aria-pressed=true] .nm{color:var(--amber)}
 
-/* ---------- notes ---------- */
-.notes{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:clamp(24px,4vw,64px);
-  padding:clamp(24px,3.4vw,48px) clamp(14px,3vw,40px) 40px;border-top:1px solid var(--line)}
-.pull{font-family:var(--display);font-size:clamp(1.5rem,3.1vw,2.5rem);line-height:1.18;letter-spacing:-.01em;margin:0 0 26px;max-width:22ch}
-.pull span{color:var(--brass)}
-.defs{margin:0}
-.defs dt{font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--glacier);margin-top:20px}
-.defs dd{margin:6px 0 0;color:var(--ink-2);max-width:64ch;font-size:15px}
-.defs dd code{font-family:var(--mono);font-size:.92em;color:var(--ink);background:rgba(255,255,255,.05);padding:1px 5px;border-radius:2px}
-.aside{border-left:1px solid var(--line);padding-left:clamp(16px,2vw,28px)}
-.aside h3{font-family:var(--display);font-weight:400;font-size:1.35rem;margin:0 0 10px}
-.aside p{margin:0 0 14px;color:var(--ink-2);font-size:14.5px}
-.kbd{display:inline-block;font-family:var(--mono);font-size:10.5px;padding:2px 7px;border:1px solid var(--line);border-bottom-width:2px;border-radius:3px;color:var(--ink-2);margin-right:5px}
-footer{border-top:1px solid var(--line);padding:22px clamp(14px,3vw,40px) 46px;display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;
-  font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;color:var(--muted)}
-.warn{color:var(--ember)}
+.orbit{border:1px solid var(--line-soft);background:rgba(13,18,25,.66);padding:12px 13px 10px}
+.orbit h3{margin:0 0 8px;font-family:var(--mono);font-size:.6rem;letter-spacing:.24em;
+  text-transform:uppercase;color:var(--dim);display:flex;justify-content:space-between}
+.orbit h3 em{font-style:normal;color:var(--amber)}
+.orbit canvas{display:block;width:100%;height:96px}
+.orbit p{margin:7px 0 0;font-size:.72rem;color:var(--dim);line-height:1.4}
 
+/* ── atlas ────────────────────────────────────────────────── */
+.atlas-wrap{margin-top:30px}
+.rule{display:flex;align-items:baseline;gap:16px;border-bottom:1px solid var(--line);padding-bottom:9px;margin-bottom:16px}
+.rule h2{margin:0;font-family:var(--serif);font-weight:400;font-size:1.42rem;letter-spacing:-.01em}
+.rule p{margin:0;font-size:.8rem;color:var(--muted);flex:1;min-width:0}
+.rule .num{font-family:var(--mono);font-size:.6rem;letter-spacing:.2em;color:var(--dim);text-transform:uppercase}
+.atlas{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:11px}
+.thumb{
+  border:1px solid var(--line-soft);background:rgba(13,18,25,.6);padding:7px;cursor:pointer;
+  text-align:left;transition:transform .2s,border-color .2s,box-shadow .2s;border-radius:1px;
+}
+.thumb:hover{transform:translateY(-4px);border-color:var(--amber);box-shadow:0 14px 26px -18px #000}
+.thumb canvas{display:block;width:100%;aspect-ratio:1/1;background:#04060a}
+.thumb .nm{display:block;margin-top:6px;font-size:.74rem;color:var(--text)}
+.thumb .cv{display:block;font-family:var(--mono);font-size:.6rem;color:var(--dim);margin-top:2px}
+
+/* ── notes (paper band) ───────────────────────────────────── */
+.notes{
+  margin-top:52px;background:var(--paper);color:var(--paper-ink);
+  padding:clamp(26px,4vw,58px);position:relative;border-radius:2px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.045'/%3E%3C/svg%3E");
+}
+.notes .kicker{font-family:var(--mono);font-size:.62rem;letter-spacing:.26em;text-transform:uppercase;
+  color:var(--paper-dim);margin:0 0 12px}
+.notes h2{margin:0 0 6px;font-family:var(--serif);font-weight:400;font-size:clamp(1.8rem,3.4vw,2.9rem);
+  line-height:1.02;letter-spacing:-.02em;max-width:22ch}
+.notes h2 em{font-style:italic;color:#8a5a1b}
+.notes__grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,.85fr);gap:clamp(22px,3.5vw,54px);margin-top:30px}
+.steps{list-style:none;margin:0;padding:0;counter-reset:s}
+.steps li{
+  counter-increment:s;display:grid;grid-template-columns:auto 1fr;gap:16px;
+  padding:14px 0;border-top:1px solid rgba(21,24,29,.16);
+}
+.steps li::before{
+  content:counter(s,decimal-leading-zero);font-family:var(--mono);font-size:.72rem;
+  color:#8a5a1b;padding-top:3px;letter-spacing:.06em;
+}
+.steps h4{margin:0 0 4px;font-family:var(--serif);font-size:1.14rem;font-weight:400}
+.steps p{margin:0;font-size:.9rem;color:#3b424c;max-width:52ch}
+.steps code{font-family:var(--mono);font-size:.8rem;background:rgba(21,24,29,.07);padding:1px 5px}
+.aside{border-left:2px solid #8a5a1b;padding-left:20px}
+.aside p{font-size:.92rem;color:#3b424c;margin:0 0 14px}
+.aside p:first-child{font-family:var(--serif);font-size:1.16rem;line-height:1.45;color:var(--paper-ink)}
+.aside .fig{margin:18px 0 8px;border:1px solid rgba(21,24,29,.2);background:#faf6ee}
+.aside .fig canvas{display:block;width:100%;height:150px}
+.aside .figcap{font-family:var(--mono);font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--paper-dim);margin-top:6px}
+.consts{
+  display:flex;flex-wrap:wrap;gap:10px 30px;margin-top:34px;padding-top:16px;
+  border-top:1px solid rgba(21,24,29,.2);font-family:var(--mono);font-size:.72rem;color:#4a525d;
+}
+.consts b{color:#8a5a1b;font-weight:400}
+.keys{margin-top:22px;display:flex;flex-wrap:wrap;gap:8px}
+.keys kbd{
+  font-family:var(--mono);font-size:.66rem;border:1px solid rgba(21,24,29,.3);
+  padding:4px 7px;background:#faf6ee;color:var(--paper-ink);border-radius:2px;
+  box-shadow:0 1px 0 rgba(21,24,29,.25);
+}
+.keys span{font-size:.74rem;color:var(--paper-dim);align-self:center}
+
+footer{
+  padding:26px 0 34px;font-family:var(--mono);font-size:.66rem;letter-spacing:.1em;
+  color:var(--dim);display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;
+}
+footer b{color:var(--muted);font-weight:400}
+
+/* ── reveal ───────────────────────────────────────────────── */
 .reveal{opacity:0;transform:translateY(20px);transition:opacity .8s cubic-bezier(.2,.7,.2,1),transform .8s cubic-bezier(.2,.7,.2,1)}
 .reveal.in{opacity:1;transform:none}
 
-@media(max-width:1040px){
-  .plates{grid-template-columns:1fr}
-  .hero{grid-template-columns:1fr}
-  .hero::before,.hero::after{display:none}
-  .notes{grid-template-columns:1fr}
-  .aside{border-left:0;padding-left:0;border-top:1px solid var(--line);padding-top:22px}
+@media(max-widthpx){
+  .stage{grid-template-columns:1fr}
+  .masthead{grid-template-columns:1fr}
+  .notes__grid{grid-template-columns:1fr}
 }
-@media(max-width:620px){
-  .plate-foot{grid-template-columns:1fr}
-  .formula{font-size:14vw}
+@media(max-width:560px){
+  .pals{grid-template-columns:1fr}
+  .plate__id{font-size:1.7rem}
 }
 @media(prefers-reduced-motion:reduce){
-  *{animation-duration:.001s!important;transition-duration:.001s!important}
+  .bg__rings{animation:none}
+  .reveal{transition:none;opacity:1;transform:none}
 }
 </style>
 </head>
 <body>
 
-<div class="ambient" aria-hidden="true">
-  <span class="grid"></span><span class="glow g1"></span><span class="glow g2"></span><span class="glow g3"></span><span class="vig"></span>
+<div class="bg" aria-hidden="true">
+  <i class="bg__grid"></i><i class="bg__rings"></i><i class="bg__rings bg__rings--b"></i><i class="bg__vig"></i>
 </div>
 
-<div class="topbar">
-  <div class="tb-left">
-    <span class="mark">◈</span><span class="tb-title">Quadratic Dynamics</span>
-    <span class="tb-sub mono">two plates · one map · cpu, no dependencies</span>
-  </div>
-  <div class="tb-right mono">
-    <span class="tk"><em>c</em><b id="tkC">—</b></span>
-    <span class="tk"><em>iter</em><b id="tkIter">—</b></span>
-    <span class="tk"><em>zoom</em><b id="tkZoom">—</b></span>
-    <span class="tk"><em>status</em><b id="tkStatus">booting</b></span>
-  </div>
+<div class="wrap">
+
+  <header class="masthead">
+    <div>
+      <p class="eyebrow"><b>Plate I + II</b><s></s>escape-time renderer<s></s>float64 · no libraries</p>
+      <h1><span class="a">The Mandelbrot set</span><br>and its <span class="b">Julia</span> fibres
+        <small>recurrence&nbsp; z ← z² + c &nbsp;·&nbsp; rendered pixel by pixel</small>
+      </h1>
+      <p class="lede">Two pictures, one line of arithmetic, run over two different grids. Plate I iterates over <b>parameters</b> c; Plate II iterates over <b>starting values</b> z₀ for a single chosen c. Sweep the cursor across Plate I and Plate II redraws itself — because the Mandelbrot set is the index of every Julia set.</p>
+    </div>
+    <aside class="formula">
+      <div class="formula__eq"><span class="v">z</span><sub>n+1</sub> = <span class="v">z</span><sub>n</sub><sup>2</sup> + <span class="v">c</span></div>
+      <dl>
+        <dt>ℳ</dt><dd>{ c ∈ ℂ : the orbit of 0 stays bounded }</dd>
+        <dt>𝒥<sub>c</sub></dt><dd>boundary of the bounded orbit set for one fixed c</dd>
+      </dl>
+      <p class="formula__note">pixel is coloured the moment |z| &gt; <span id="rEcho">4.0</span></p>
+    </aside>
+  </header>
+
+  <main class="stage">
+
+    <!-- ══ PLATE I ══ -->
+    <section class="plate reveal" id="plateM">
+      <div class="plate__head">
+        <div class="plate__id">I</div>
+        <div>
+          <h2>Mandelbrot set</h2>
+          <p class="plate__sub">each pixel <em>is</em> a parameter <code>c = a + bi</code>; z₀ = 0</p>
+        </div>
+        <div class="badge" id="badgeM">hover to sample c</div>
+      </div>
+      <div class="frame" id="frameM">
+        <canvas class="view" id="cvM" role="img" aria-label="Mandelbrot set rendered in the complex plane"></canvas>
+        <canvas class="ovl" id="ovM" aria-hidden="true"></canvas>
+        <div class="scan"><i id="scanM"></i></div>
+        <div class="warn" id="warnM">float64 limit reached</div>
+        <div class="hint" id="hintM">drag · wheel · click ×2.2 · shift-click ÷2.2</div>
+      </div>
+      <div class="readout">
+        <div><span>centre</span><b id="mCenter">−0.650000, 0.000000</b></div>
+        <div><span>span</span><b id="mSpan">2.600</b></div>
+        <div><span>zoom</span><b id="mZoom" class="hi">1.0×</b></div>
+        <div><span>iterations</span><b id="mIter">240</b></div>
+        <div><span>render</span><b id="mMs">—</b></div>
+      </div>
+    </section>
+
+    <div class="col">
+
+      <!-- ══ PLATE II ══ -->
+      <section class="plate plate--sm reveal" id="plateJ">
+        <div class="plate__head">
+          <div class="plate__id">II</div>
+          <div>
+            <h2>Julia set 𝒥<sub>c</sub></h2>
+            <p class="plate__sub">c fixed at <code id="jC">−0.70176 + 0.38420 i</code>; the orbit of every pixel is plotted</p>
+          </div>
+          <div class="badge on" id="badgeJ">c ∈ ℳ</div>
+        </div>
+        <div class="frame frame--j" id="frameJ">
+          <canvas class="view" id="cvJ" role="img" aria-label="Julia set for the current parameter c"></canvas>
+          <canvas class="ovl" id="ovJ" aria-hidden="true"></canvas>
+          <div class="scan"><i id="scanJ"></i></div>
+          <div class="hint" id="hintJ">orbit of 0 overlaid</div>
+        </div>
+        <div class="readout">
+          <div><span>|c|</span><b id="cMod">0.8004</b></div>
+          <div><span>iterations</span><b id="jIter">240</b></div>
+          <div><span>render</span><b id="jMs">—</b></div>
+        </div>
+      </section>
+
+      <!-- ══ CONSOLE ══ -->
+      <div class="console reveal">
+
+        <div class="grp">
+          <h3>Parameter <em id="cSrc">cursor-coupled</em></h3>
+          <div class="ctl"><label for="cre">Re(c)</label><output id="creOut">−0.70176</output>
+            <input type="range" id="cre" min="-2.2" max="1" step="0.00002" value="-0.70176"></div>
+          <div class="ctl"><label for="cim">Im(c)</label><output id="cimOut">0.38420</output>
+            <input type="range" id="cim" min="-1.6" max="1.6" step="0.00002" value="0.3842"></div>
+          <div class="chips" style="margin-top:11px">
+            <button class="chip jade" id="tCouple" aria-pressed="true">couple c ↔ cursor</button>
+            <button class="chip" id="tAnim" aria-pressed="false">animate c</button>
+            <button class="chip" id="bRandom">↯ random boundary c</button>
+          </div>
+        </div>
+
+        <div class="grp">
+          <h3>Iteration budget</h3>
+          <div class="ctl"><label for="iters">max iterations (base)</label><output id="itersOut">240</output>
+            <input type="range" id="iters" min="40" max="1200" step="20" value="240"></div>
+          <div class="ctl"><label for="radius">escape radius R</label><output id="radiusOut">4.0</output>
+            <input type="range" id="radius" min="2" max="32" step="0.5" value="4"></div>
+          <div class="ctl"><label for="degree">power d in z ↦ z<sup>d</sup> + c</label><output id="degreeOut">2</output>
+            <input type="range" id="degree" min="2" max="6" step="1" value="2"></div>
+        </div>
+
+        <div class="grp">
+          <h3>Colour</h3>
+          <div class="pals" id="pals"></div>
+          <div class="ctl" style="margin-top:12px"><label for="dens">band density</label><output id="densOut">0.085</output>
+            <input type="range" id="dens" min="0.02" max="0.3" step="0.005" value="0.085"></div>
+          <div class="ctl"><label for="off">palette offset</label><output id="offOut">0.00</output>
+            <input type="range" id="off" min="0" max="1" step="0.01" value="0"></div>
+          <div class="chips" style="margin-top:11px">
+            <button class="chip jade" id="tSmooth" aria-pressed="true">smooth shading</button>
+            <button class="chip jade" id="tPeriod" aria-pressed="true">interior cycle periods</button>
+            <button class="chip" id="tShimmer" aria-pressed="false">shimmer</button>
+          </div>
+        </div>
+
+        <div class="grp" style="display:flex;gap:7px;flex-wrap:wrap;padding:11px 14px">
+          <button class="chip" id="bResetM">reset Plate I</button>
+          <button class="chip" id="bResetJ">reset Plate II</button>
+          <button class="chip" id="bZoomIn">zoom +</button>
+          <button class="chip" id="bZoomOut">zoom −</button>
+        </div>
+
+        <div class="orbit">
+          <h3>Orbit of 0 &nbsp;|z<sub>n</sub>|&nbsp; <em id="orbitTag">bounded</em></h3>
+          <canvas id="cvOrbit" aria-label="Chart of the modulus of the orbit of zero"></canvas>
+          <p>Raw modulus per iteration, against the escape circle. A flat line means the orbit is trapped in an attracting cycle.</p>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <!-- ══ ATLAS ══ -->
+  <section class="atlas-wrap reveal">
+    <div class="rule">
+      <span class="num">Appendix</span>
+      <h2>Parameter atlas</h2>
+      <p>Eight named parameters. Click one to load it into Plate II — the last one sits outside ℳ, so its Julia set shatters into dust.</p>
+    </div>
+    <div class="atlas" id="atlas"></div>
+  </section>
+
+  <!-- ══ NOTES ══ -->
+  <section class="notes reveal">
+    <p class="kicker">Reading the plates</p>
+    <h2>One recurrence, <em>two grids</em>, and a catalogue of everything that stays bounded.</h2>
+
+    <div class="notes__grid">
+      <ol class="steps">
+        <li><div><h4>Give every pixel a complex number</h4>
+          <p>Plate I maps the frame to c ∈ [−2.0, 0.7] × [−1.3, 1.3]. Plate II maps it to starting values z₀ and holds c still. Same code, different meaning of a pixel.</p></div></li>
+        <li><div><h4>Iterate in double precision</h4>
+          <p><code>z ← z² + c</code>, repeated. For z² + c the escape test is exact: once <code>|z| &gt; 2</code>, the orbit can never return, so any R ≥ 2 is a valid trap.</p></div></li>
+        <li><div><h4>Count the escape</h4>
+          <p>The raw count n is a staircase — visible banding. Subtract <code>log(log|z| / log R) / log R</code> and the staircase becomes a continuous height field; that is what the palettes ride on.</p></div></li>
+        <li><div><h4>Colour the survivors</h4>
+          <p>Points that never escape <em>are</em> the set. Rather than paint them black, both plates detect the attracting cycle the orbit falls into and tint it by period — the interior becomes a map of dynamics.</p></div></li>
+        <li><div><h4>Refine as you descend</h4>
+          <p>Iteration budget grows with depth (≈ +28 per binary zoom), so detail survives to the double-precision wall near 10¹⁴×, where pixels start stepping.</p></div></li>
+      </ol>
+
+      <div class="aside">
+        <p>The Mandelbrot set is not a sibling of the Julia sets — it is their <strong>table of contents</strong>.</p>
+        <p>A parameter c lies inside ℳ exactly when 𝒥<sub>c</sub> is one connected piece. Step outside the boundary and 𝒥<sub>c</sub> shatters into a Cantor dust of uncountably many points. That is why hovering Plate I is a topology preview of Plate II: the rabbit, the airfoil, the seahorse valleys near c ≈ −0.75, and the tiny satellite copies along the real axis are all entries in the same index.</p>
+        <div class="fig"><canvas id="figEscape" aria-label="Diagram of the escape disc with an escaping orbit"></canvas></div>
+        <p class="figcap">Fig. 1 — the escape disc, and an orbit that leaves it at n = 6</p>
+      </div>
+    </div>
+
+    <div class="consts">
+      <span><b>|c| &gt; 2</b> ⇒ every orbit escapes</span>
+      <span><b>main cardioid</b> c = ½e<sup>iθ</sup> − ¼e<sup>2iθ</sup></span>
+      <span><b>period-2 bulb</b> |c + 1| ≤ ¼</span>
+      <span><b>ℳ ⊂</b> [−2, ½] × [−√3/2, √3/2] … compact, connected, uncountable boundary</span>
+    </div>
+
+    <div class="keys">
+      <span>keys</span>
+      <kbd>R</kbd><span>reset views</span>
+      <kbd>N</kbd><span>random c</span>
+      <kbd>A</kbd><span>animate</span>
+      <kbd>P</kbd><span>next palette</span>
+      <kbd>+</kbd><kbd>−</kbd><span>zoom Plate I</span>
+    </div>
+  </section>
+
+  <footer>
+    <span>Rendered live in your browser · two <b>&lt;canvas&gt;</b> elements · progressive row-chunked scan · smooth escape-time + cycle-period interior</span>
+    <span>no libraries · no images · no network</span>
+  </footer>
 </div>
-
-<header class="hero">
-  <div>
-    <p class="eyebrow">escape time, rendered live in your browser</p>
-    <h1 class="formula"><i>z</i><sub>n+1</sub><span class="op">=</span><i>z</i><sub>n</sub><sup>2</sup><span class="op">+</span><span class="cc">c</span></h1>
-    <p class="deck">Iterate a quadratic map on the complex plane and colour each point by how long it takes to run away. Do it over the plane of <b>starting points</b> and you get a <b>Julia set</b>. Do it over the plane of <b>parameters</b> and you get the <b>Mandelbrot set</b>. They are the same computation, aimed at two different variables — hover Plate I and it hands its <b>c</b> to Plate II.</p>
-  </div>
-  <dl class="facts">
-    <div><dt>map</dt><dd>z ↦ z² + c</dd></div>
-    <div><dt>escape radius</dt><dd>|z| &gt; 2</dd></div>
-    <div><dt>smooth count</dt><dd>n + 1 − log₂ log|z|</dd></div>
-    <div><dt>colour</dt><dd>1024-entry cyclic LUT</dd></div>
-    <div><dt>dictionary</dt><dd>J<sub>c</sub> connected ⟺ c ∈ M</dd></div>
-  </dl>
-</header>
-
-<section class="console reveal">
-  <div class="ctl"><label>iteration depth</label><input type="range" id="iterCtl" min="60" max="1400" step="20" value="320"><output class="mono" id="iterOut">320</output></div>
-  <div class="ctl"><label>band density</label><input type="range" id="densCtl" min="8" max="110" step="1" value="34"><output class="mono" id="densOut">34</output></div>
-  <div class="ctl"><label>palette drift</label><button class="tgl" id="driftCtl" aria-pressed="true">on</button></div>
-  <div class="ctl"><label>grid</label><button class="tgl" id="gridCtl" aria-pressed="true">on</button></div>
-  <div class="ctl"><label>critical orbit</label><button class="tgl" id="orbitCtl" aria-pressed="true">on</button></div>
-  <div class="ctl"><label>resolution</label><div class="seg" id="qualCtl"><button data-q="0.7">draft</button><button data-q="1.1" class="on">std</button><button data-q="1.6">sharp</button></div></div>
-  <div class="ctl"><label>view</label><button class="chip" id="resetAll">reset both</button></div>
-</section>
-
-<main>
-<section class="plates">
-
-  <article class="plate reveal" id="plateM">
-    <div class="plate-head">
-      <span class="plate-num">I</span>
-      <div>
-        <h2>Mandelbrot set</h2>
-        <p class="sub">the parameter plane — every pixel is a candidate constant <i>c</i>, every orbit starts at z₀ = 0</p>
-      </div>
-      <div class="plate-status"><span class="dot"></span><span id="mStatus">idle</span></div>
-    </div>
-    <div class="stage" id="stageM">
-      <canvas id="cvM" role="img" aria-label="Mandelbrot set, escape-time rendering of the complex parameter plane"></canvas>
-      <canvas class="ov" id="ovM" aria-hidden="true"></canvas>
-      <i class="scan"></i>
-    </div>
-    <div class="progress"><i id="mProg"></i></div>
-    <div class="plate-foot">
-      <figure class="locator">
-        <div class="loc-stage"><canvas id="cvLoc"></canvas><canvas class="ov" id="ovLoc"></canvas></div>
-        <figcaption class="mono">locator</figcaption>
-      </figure>
-      <div class="foot-main">
-        <div class="readouts mono">
-          <span><em>center</em><b id="mCenter">—</b></span>
-          <span><em>cursor</em><b id="mCursor">—</b></span>
-          <span><em>vertical span</em><b id="mSpan">—</b></span>
-          <span><em>iterations</em><b id="mIter">—</b></span>
-        </div>
-        <div class="chips" id="mPresets"></div>
-        <div class="foot-row">
-          <span class="lbl">palette</span><div class="swatches" data-palettes="M"></div>
-          <button class="chip" id="mReset">reset view</button>
-          <span class="pin" id="pinBadge">c follows cursor</span>
-        </div>
-      </div>
-    </div>
-  </article>
-
-  <article class="plate plate-j reveal" id="plateJ">
-    <div class="plate-head">
-      <span class="plate-num">II</span>
-      <div>
-        <h2>Julia set <span class="mono" style="font-size:.5em;letter-spacing:.1em;color:var(--muted)">J<sub>c</sub></span></h2>
-        <p class="sub">the dynamical plane — c fixed, pixels are starting points z₀</p>
-      </div>
-      <div class="plate-status"><span class="dot"></span><span id="jStatus">idle</span></div>
-    </div>
-    <div class="stage" id="stageJ">
-      <canvas id="cvJ" role="img" aria-label="Julia set of the quadratic map for the currently selected constant c"></canvas>
-      <canvas class="ov" id="ovJ" aria-hidden="true"></canvas>
-      <i class="scan"></i>
-    </div>
-    <div class="progress"><i id="jProg"></i></div>
-    <div class="plate-foot">
-      <div class="foot-main">
-        <div class="cbox">
-          <span class="cval mono" id="cOut">—</span>
-          <span class="badge" id="cBadge">—</span>
-        </div>
-        <div class="sliders">
-          <label>Re c<input type="range" id="cRe" min="-1.7" max="1.7" step="0.0005" value="-0.4"><output id="cReOut">−0.400</output></label>
-          <label>Im c<input type="range" id="cIm" min="-1.7" max="1.7" step="0.0005" value="0.6"><output id="cImOut">0.600</output></label>
-        </div>
-        <div class="chips" id="jPresets"></div>
-        <div class="foot-row">
-          <span class="lbl">palette</span><div class="swatches" data-palettes="J"></div>
-          <button class="chip" id="jReset">reset view</button>
-          <button class="chip" id="cShuffle">shuffle c</button>
-        </div>
-      </div>
-    </div>
-  </article>
-
-</section>
-
-<section class="atlas reveal">
-  <div class="sec-head">
-    <span class="sec-num">02</span>
-    <div><h2>Parameter atlas</h2><p>Nine constants. Click one to load it into Plate II — the tag records whether c lies inside Plate I.</p></div>
-  </div>
-  <div class="strip" id="atlas"></div>
-</section>
-
-<section class="notes">
-  <div class="reveal">
-    <p class="pull">The Mandelbrot set is a <span>table of contents</span>. Each Julia set is one of the chapters it indexes.</p>
-    <dl class="defs">
-      <dt>Escape time</dt>
-      <dd>Iterate <code>z ↦ z² + c</code>. The moment <code>|z| &gt; 2</code> the orbit is provably unbounded — from there every iterate grows without limit. Points that never cross the radius within the iteration budget are drawn as the filled interior.</dd>
-      <dt>Fractional counts</dt>
-      <dd>Whole-number counts produce hard bands. The continuous estimate <code>n + 1 − log₂(log|z|)</code> asks <em>where inside the escape ring</em> the orbit slipped out, and the banding dissolves into smooth gradients.</dd>
-      <dt>Plate I — parameter plane</dt>
-      <dd>Here the pixel <em>is</em> the constant <code>c</code>, and the orbit always begins at the critical point <code>z = 0</code>. The set of c whose orbit stays bounded is M: a catalogue with exactly one entry per connected quadratic Julia set.</dd>
-      <dt>Plate II — dynamical plane</dt>
-      <dd>Here <code>c</code> is fixed and the pixels are starting points. The boundary between the points that flee and the points that stay is the Julia set <code>J_c</code> — a curve with zero area that no amount of zoom ever flattens.</dd>
-      <dt>The bridge</dt>
-      <dd>Douady–Hubbard: <code>c ∈ M ⟺ J_c is connected</code>. Move c outside Plate I and Plate II shatters into a Cantor dust. That is why the crosshair on Plate I is the most honest control on this page.</dd>
-      <dt>Critical orbit</dt>
-      <dd>The glowing path on Plate II is <code>0 ↦ c ↦ c²+c ↦ …</code>. The map has exactly one finite critical point, and its fate decides everything: it must fall into an attractor, or the Julia set is disconnected.</dd>
-      <dt>Precision floor</dt>
-      <dd>Below a vertical span of roughly <code>10⁻¹²</code>, IEEE-754 doubles stop resolving neighbouring pixels and the image pixelates. That is the machine running out, not the set running out.</dd>
-    </dl>
-  </div>
-  <aside class="aside reveal">
-    <h3>Controls</h3>
-    <p><b>Plate I:</b> scroll to zoom toward the cursor, drag to pan, double-click to go home. A click pins <code>c</code>; click again to move the pin.</p>
-    <p><b>Plate II:</b> scroll and drag independently; the sliders and chips set <code>c</code> numerically.</p>
-    <p><span class="kbd">R</span>reset <span class="kbd">G</span>grid <span class="kbd">O</span>orbit <span class="kbd">Space</span>drift <span class="kbd">←/→</span>cycle palette</p>
-    <h3 style="margin-top:26px">How it is drawn</h3>
-    <p>Each plate is computed on the CPU in scanline chunks against a 12 ms frame budget, in three progressive passes (¼, ½, full resolution) so the image is never blank. The cardioid and period-2 bulb are rejected analytically before iterating.</p>
-    <p>Escape values are cached in a <code>Float32Array</code>, so palette, drift and band-density changes recolour the plate from the LUT without re-iterating a single point — which is what makes the palette drift cheap enough to leave running.</p>
-    <p>Colour is a 1024-entry cyclic lookup table indexed by <code>√n</code>, with a per-pixel dither to break up quantisation steps.</p>
-  </aside>
-</section>
-</main>
-
-<footer>
-  <span>Plate I · Plate II · rendered from scratch, no libraries, no images, no network</span>
-  <span id="footNote">z ↦ z² + c</span>
-</footer>
 
 <script>
 (function(){
 'use strict';
-const $=s=>document.querySelector(s), TAU=Math.PI*2, LOG2=Math.log(2);
-const LUT_SIZE=1024, MASK=LUT_SIZE-1;
-const MONO='ui-monospace,"SF Mono",Menlo,Consolas,monospace';
+const $ = s => document.querySelector(s);
 
-/* ============ palettes ============ */
-const STOPS={
-  glacier:['#05070d','#10233c','#1c4a6e','#2e8b8b','#79c2b0','#e8d8a8','#d99b4a','#a4462f','#4a2038'],
-  ember:  ['#0a0507','#2b0d16','#6b1a24','#a83a22','#d9762b','#efb458','#f6e6c4','#7c5a8f','#241726'],
-  graphite:['#07080a','#171c23','#2c3540','#4b5866','#7d8b9c','#c3ccd8','#eef2f7','#5b6472','#1a1f27'],
-  reef:   ['#050b12','#0f3b4c','#1f7d8c','#41b7a4','#c9e59a','#f2c14e','#e0592f','#8e2454','#2a0f28']
-};
-function hexRGB(h){return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];}
-function buildLUT(hexes){
-  const rgb=hexes.map(hexRGB), n=rgb.length, lut=new Uint8Array(LUT_SIZE*3);
-  for(let i=0;i<LUT_SIZE;i++){
-    const t=i/LUT_SIZE*n, k=Math.floor(t)%n, f0=t-Math.floor(t), f=f0*f0*(3-2*f0);
-    const a=rgb[k], b=rgb[(k+1)%n];
-    lut[i*3]=a[0]+(b[0]-a[0])*f; lut[i*3+1]=a[1]+(b[1]-a[1])*f; lut[i*3+2]=a[2]+(b[2]-a[2])*f;
+/* ═══════════════ palettes (cyclic ramps) ═══════════════ */
+const PALETTES = [
+ {id:'ember',   name:'Copper Ember', inner:'#070a0f', stops:['#071018','#123a4d','#1f7a8c','#57c7b8','#f2e6c9','#f0a63c','#b0442b']},
+ {id:'glacier', name:'Glacier',      inner:'#05080d', stops:['#06131c','#0d3a5c','#2f7fb5','#8fd3e8','#eef6fb','#b9c9d6','#4a6478']},
+ {id:'sediment',name:'Sediment',     inner:'#0a0806', stops:['#12100e','#3a2b1c','#7a5230','#c08a4a','#e8d3a9','#6b7a6e','#2a3330']},
+ {id:'ultra',   name:'Ultraviolet',  inner:'#0a0713', stops:['#0d0a18','#2b1b47','#6a2f7a','#c0467f','#f08a68','#ffe3c4','#8f9bd6']},
+ {id:'verdigris',name:'Verdigris',   inner:'#050b09', stops:['#071310','#0f3a30','#1f6b4f','#7fae63','#d9e6a8','#f2f0e2','#4b6b7c']},
+ {id:'graphite',name:'Graphite',     inner:'#050608', stops:['#06070a','#1a1e26','#3c444f','#6f7a86','#b3bcc4','#eef1f4','#8b939c']}
+];
+const hex2rgb = h => [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+
+let LUT=null, VCOL=null, PERIOD=null, INNER32=0, palIdx=0;
+
+function buildLUT(pal){
+  const n=2048, a=new Uint32Array(n);
+  const st = pal.stops.map(hex2rgb); st.push(st[0]);
+  const m = st.length-1;
+  for(let i=0;i<n;i++){
+    const t=i/n*m, k=Math.min(m-1,t|0), f=t-k, s=f*f*(3-2*f);
+    const A=st[k], B=st[k+1];
+    const r=(A[0]+(B[0]-A[0])*s)|0, g=(A[1]+(B[1]-A[1])*s)|0, b=(A[2]+(B[2]-A[2])*s)|0;
+    a[i]=0xff000000|(b<<16)|(g<<8)|r;
   }
-  return lut;
+  return a;
 }
-const LUTS={}; for(const k in STOPS) LUTS[k]=buildLUT(STOPS[k]);
-function gradCSS(name){const s=STOPS[name];return 'linear-gradient(90deg,'+s.map((h,i)=>h+' '+(i/(s.length-1)*100).toFixed(1)+'%').join(',')+')';}
-
-/* ============ helpers ============ */
-function fmt(x,dp){ if(!isFinite(x))return '—'; let s=x.toFixed(dp); if(/^-0(\.0*)?$/.test(s))s=s.slice(1); return s.replace('-','−'); }
-function cplx(re,im,dp){ return fmt(re,dp)+' '+(im<0?'−':'+')+' '+Math.abs(im).toFixed(dp)+'i'; }
-function dpFor(span){ return Math.max(2,Math.min(11,Math.ceil(-Math.log10(span/6))+2)); }
-function inMandel(re,im,n){ let zr=0,zi=0; for(let i=0;i<n;i++){const a=zr*zr,b=zi*zi; if(a+b>4)return false; zi=2*zr*zi+im; zr=a-b+re;} return true; }
-function computeOrbit(re,im,n){
-  const pts=[]; let zr=0,zi=0,esc=-1;
-  for(let i=0;i<n;i++){ pts.push({re:zr,im:zi}); const a=zr*zr,b=zi*zi; if(a+b>4){esc=i;break;} zi=2*zr*zi+im; zr=a-b+re; }
-  return {pts:pts,escaped:esc>=0};
+function buildPeriod(pal){
+  const inn=hex2rgb(pal.inner), arr=new Uint32Array(129);
+  for(let p=0;p<=128;p++){
+    const t=(p*0.6180339887)%1, c=LUT[(t*(LUT.length-1))|0];
+    let r=(c&255), g=(c>>8)&255, b=(c>>16)&255;
+    r=r*0.60+inn[0]*0.40; g=g*0.60+inn[1]*0.40; b=b*0.60+inn[2]*0.40;
+    arr[p]=0xff000000|((b|0)<<16)|((g|0)<<8)|(r|0);
+  }
+  return arr;
+}
+function buildVCOL(maxV){
+  const len=(maxV+2)*8, v=new Uint32Array(len), N=LUT.length-1;
+  const d=S.density, o=S.offset, sm=S.smooth;
+  for(let k=0;k<len;k++){
+    const n=k/8;
+    let t = sm ? Math.pow(n+1,0.42)*d + o : n*0.022 + o;
+    t -= Math.floor(t);
+    v[k]=LUT[(t*N)|0];
+  }
+  VCOL=v;
+}
+function setPalette(i){
+  palIdx=i; const pal=PALETTES[i];
+  LUT=buildLUT(pal); PERIOD=buildPeriod(pal);
+  const ir=hex2rgb(pal.inner); INNER32=0xff000000|((ir[2]<<16)|(ir[1]<<8)|ir[0]);
+  document.querySelectorAll('.pal').forEach((b,j)=>b.setAttribute('aria-pressed',String(j===i)));
+  tablesDirty=true; ensureTables(); repaintAll();
 }
 
-/* ============ the plate ============ */
-class Plate{
-  constructor(o){
-    this.kind=o.kind||'mandel';
-    this.el=o.el||null; this.canvas=o.canvas; this.ctx=this.canvas.getContext('2d');
-    this.overlay=o.overlay||null; this.octx=this.overlay?this.overlay.getContext('2d'):null;
-    this.stage=o.stage||this.canvas.parentElement;
-    this.cx=o.cx!==undefined?o.cx:-0.65; this.cy=o.cy||0; this.half=o.half||1.35;
-    this.home={cx:this.cx,cy:this.cy,half:this.half};
-    this.c=o.c||{re:-0.4,im:0.6};
-    this.baseIter=o.baseIter||320;
-    this.density=o.density||34; this.offset=o.offset||0;
-    this.palette=o.palette||'glacier'; this.lut=LUTS[this.palette];
-    this.interior=hexRGB(STOPS[this.palette][0]).map(v=>Math.round(v*0.32));
-    this.interactive=o.interactive!==false;
-    this.showGrid=o.showGrid!==false;
-    this.quality=o.quality||1.1;
-    this.statusEl=o.statusEl||null; this.progressEl=o.progressEl||null;
-    this.orbit=null; this.orbitPhase=0;
-    this.w=0;this.h=0;this.dpr=1;
-    this.dither=new Float32Array(1024); for(let i=0;i<1024;i++) this.dither[i]=Math.random()*0.9;
-    this.raf=0; this.P=null; this.passes=[4,2,1]; this.pi=0;
-    new ResizeObserver(()=>this.resize()).observe(this.stage);
+/* ═══════════════ state ═══════════════ */
+const S={ maxIter:240, R:4, deg:2, smooth:true, periods:true,
+          density:0.085, offset:0, cRe:-0.70176, cIm:0.3842,
+          couple:true, anim:false, shimmer:false };
+
+/* ═══════════════ the kernel ═══════════════ */
+function findPeriod(zx,zy,a,b,deg){
+  const x0=zx,y0=zy;
+  for(let p=1;p<=48;p++){
+    if(deg===2){ const t=zx*zx-zy*zy+a; zy=2*zx*zy+b; zx=t; }
+    else{ let rx=zx,ry=zy;
+      for(let k=1;k<deg;k++){ const t=rx*zx-ry*zy; ry=rx*zy+ry*zx; rx=t; }
+      zx=rx+a; zy=ry+b;
+    }
+    const dx=zx-x0, dy=zy-y0;
+    if(dx*dx+dy*dy < 1e-9) return p;
+    if(!isFinite(zx)||!isFinite(zy)) return 0;
+  }
+  return 0;
+}
+/* kind 0 = Mandelbrot (pixel is c), 1 = Julia (pixel is z0) */
+function compute(buf,W,H,cx,cy,halfH,maxIter,kind,deg,yA,yB){
+  const halfW=halfH*W/H, inv=2*halfH/H, Lx=cx-halfW, Ly=cy-halfH;
+  const R=S.R, R2=R*R, logR=Math.log(R), invLogR=1/logR;
+  const cr=S.cRe, ci=S.cIm, per=S.periods, sm=S.smooth, two=(deg===2);
+  for(let py=yA;py<yB;py++){
+    const pi=Ly+py*inv; let i=py*W;
+    for(let px=0;px<W;px++,i++){
+      const pr=Lx+px*inv;
+      let a,b,zx,zy;
+      if(kind===0){
+        a=pr; b=pi; zx=0; zy=0;
+        if(two){
+          const xm=pr-0.25, y2=pi*pi, q=xm*xm+y2;
+          if(q*(q+xm)<=0.25*y2){ buf[i]=-2; continue; }          // main cardioid
+          const u=pr+1;
+          if(u*u+y2<=0.0625){ buf[i]=-3; continue; }             // period-2 bulb
+        }
+      } else { zx=pr; zy=pi; a=cr; b=ci; }
+
+      let n=0;
+      if(two){
+        let zx2=zx*zx, zy2=zy*zy;
+        while(zx2+zy2<=R2 && n<maxIter){
+          zy=2*zx*zy+b; zx=zx2-zy2+a;
+          zx2=zx*zx; zy2=zy*zy; n++;
+        }
+        if(n>=maxIter) buf[i]= per ? -(findPeriod(zx,zy,a,b,2)+1) : -1;
+        else if(sm){ const m=Math.sqrt(zx2+zy2);
+          buf[i]= isFinite(m)&&m>1 ? n+1-Math.log(Math.log(m)*invLogR)*invLogR : n; }
+        else buf[i]=n;
+      } else {
+        let m2=zx*zx+zy*zy;
+        while(m2<=R2 && n<maxIter){
+          let rx=zx, ry=zy;
+          for(let k=1;k<deg;k++){ const t=rx*zx-ry*zy; ry=rx*zy+ry*zx; rx=t; }
+          zx=rx+a; zy=ry+b; m2=zx*zx+zy*zy; n++;
+        }
+        if(n>=maxIter) buf[i]= per ? -(findPeriod(zx,zy,a,b,deg)+1) : -1;
+        else if(sm){ const m=Math.sqrt(m2);
+          buf[i]= isFinite(m)&&m>1 ? n+1-Math.log(Math.log(m)*invLogR)*invLogR : n; }
+        else buf[i]=n;
+      }
+    }
+  }
+}
+
+/* ═══════════════ painting ═══════════════ */
+let tablesDirty=true, tableMaxV=0;
+function ensureTables(){
+  if(!tablesDirty) return;
+  buildVCOL(tableMaxV); tablesDirty=false;
+}
+function paintBuf(buf,d32,W,yA,yB){
+  const vc=VCOL, vcl=vc.length, pd=PERIOD, inn=INNER32;
+  for(let i=yA*W;i<yB*W;i++){
+    const v=buf[i];
+    if(v<=-1){ const p=(-v-1)|0; d32[i]= p>0 ? pd[p<129?p:128] : inn; }
+    else{ let k=(v*8)|0; d32[i]= vc[k<vcl?k:vcl-1]; }
+  }
+}
+
+/* ═══════════════ view object ═══════════════ */
+class View{
+  constructor(cvId,ovId,frameId,kind,refHalf){
+    this.cv=$(cvId); this.ctx=this.cv.getContext('2d',{alpha:false});
+    this.ov=$(ovId); this.octx=this.ov.getContext('2d');
+    this.frame=$(frameId); this.kind=kind; this.refHalf=refHalf;
+    this.cx=0; this.cy=0; this.halfH=refHalf;
+    this.maxIterUsed=S.maxIter; this.ms=0; this.gen=0; this.raf=0; this.timer=0;
+    this.hover=null; this.scanEl=this.frame.querySelector('.scan i');
+    this.snap=document.createElement('canvas'); this.sctx=this.snap.getContext('2d');
+    this.snapView=null;
   }
   resize(){
-    const r=this.stage.getBoundingClientRect();
-    if(r.width<24||r.height<24) return;
-    const dpr=Math.min(window.devicePixelRatio||1,this.quality);
-    const w=Math.max(60,Math.round(r.width*dpr)), h=Math.max(60,Math.round(r.height*dpr));
-    if(w===this.w&&h===this.h) return;
-    this.w=w; this.h=h; this.dpr=dpr;
-    this.canvas.width=w; this.canvas.height=h;
-    if(this.overlay){this.overlay.width=w;this.overlay.height=h;}
-    this.img=this.ctx.createImageData(w,h);
-    const d=this.img.data; for(let p=3;p<d.length;p+=4) d[p]=255;
-    this.values=new Float32Array(w*h);
-    this.startRender();
+    const r=this.cv.getBoundingClientRect();
+    if(r.width<2) return false;
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+    let W=Math.round(r.width*dpr), H=Math.round(r.height*dpr);
+    const cap=this.kind===0?1150000:620000;
+    if(W*H>cap){ const f=Math.sqrt(cap/(W*H)); W=Math.round(W*f); H=Math.round(H*f); }
+    if(W===this.W&&H===this.H) return false;
+    this.cv.width=W; this.cv.height=H; this.ov.width=W; this.ov.height=H;
+    this.W=W; this.H=H; this.dpr=dpr;
+    this.buf=new Float32Array(W*H);
+    this.img=this.ctx.createImageData(W,H);
+    const d=this.img.data; for(let i=3;i<d.length;i+=4) d[i]=255;
+    this.d32=new Uint32Array(this.img.data.buffer);
+    this.snap.width=W; this.snap.height=H;
+    return true;
   }
-  upp(){ return (2*this.half)/this.h; }
-  toComplex(px,py){ const u=this.upp(); return {re:this.cx+(px-this.w/2)*u, im:this.cy-(py-this.h/2)*u}; }
-  toPixel(re,im){ const u=this.upp(); return {x:(re-this.cx)/u+this.w/2, y:this.h/2-(im-this.cy)/u}; }
-  maxIter(){ const zoom=2.7/(2*this.half); return Math.min(6000,Math.round(this.baseIter*(1+0.42*Math.log2(Math.max(1,zoom))))); }
-  setPalette(n){ this.palette=n; this.lut=LUTS[n]; this.interior=hexRGB(STOPS[n][0]).map(v=>Math.round(v*0.32)); if(this.values)this.recolor(); else this.startRender(); }
-  setQuality(q){ this.quality=q; this.w=0; this.resize(); }
-  scheduleRender(quick){
-    clearTimeout(this.tB);
-    if(quick!==false) this.startRender({passes:[3]});
-    this.tB=setTimeout(()=>this.startRender({passes:[4,2,1]}),230);
+  get halfW(){ return this.halfH*this.W/this.H; }
+  iterFor(){
+    const depth=Math.log2(this.refHalf/this.halfH);
+    return Math.min(6000,Math.max(32,Math.round(S.maxIter+Math.max(0,depth)*28)));
   }
-  startRender(opts){
-    opts=opts||{};
-    if(!this.w) return;
-    if(this.raf) cancelAnimationFrame(this.raf);
-    this.passes=opts.passes||[4,2,1]; this.pi=0; this.P=null;
-    this.t0=performance.now();
-    this.setStatus('computing');
-    if(this.el) this.el.classList.add('is-busy');
-    this._tick();
+  schedule(delay){ clearTimeout(this.timer); this.timer=setTimeout(()=>this.render(),delay); }
+  snapNow(){
+    this.sctx.setTransform(1,0,0,1,0,0);
+    this.sctx.drawImage(this.cv,0,0);
+    this.snapView={cx:this.cx,cy:this.cy,halfH:this.halfH};
   }
-  _tick(){
-    const P=this.P;
-    if(!P||P.y>=P.sh){
-      if(this.pi>=this.passes.length){ this._finish(); return; }
-      const s=this.passes[this.pi++];
-      const sw=Math.max(1,Math.round(this.w/s)), sh=Math.max(1,Math.round(this.h/s));
-      const off=document.createElement('canvas'); off.width=sw; off.height=sh;
-      const oc=off.getContext('2d');
-      this.P={s:s,sw:sw,sh:sh,off:off,octx:oc,img:oc.createImageData(sw,sh),y:0};
-    }
-    const t0=performance.now();
-    while(this.P.y<this.P.sh){
-      this._row(this.P,this.P.y++);
-      if(performance.now()-t0>12) break;
-    }
-    if(this.P.s===1){ this.ctx.putImageData(this.P.img,0,0); }
-    else{
-      this.P.octx.putImageData(this.P.img,0,0);
-      this.ctx.imageSmoothingEnabled=true;
-      this.ctx.drawImage(this.P.off,0,0,this.w,this.h);
-    }
-    this.setProgress(this.pi/this.passes.length);
-    this.raf=requestAnimationFrame(()=>this._tick());
+  drawSnap(){
+    if(!this.snapView) return;
+    const s=this.snapView, W=this.W,H=this.H, hh=this.halfH, hw=this.halfW;
+    const k=s.halfH/hh;
+    const tx=W/2*(1-k)+(s.cx-this.cx)*H/(2*hh);
+    const ty=H/2*(1-k)+(s.cy-this.cy)*H/(2*hh);
+    this.ctx.setTransform(1,0,0,1,0,0);
+    this.ctx.fillStyle='#04060a'; this.ctx.fillRect(0,0,W,H);
+    this.ctx.imageSmoothingEnabled=true;
+    this.ctx.setTransform(k,0,0,k,tx,ty);
+    this.ctx.drawImage(this.snap,0,0);
+    this.ctx.setTransform(1,0,0,1,0,0);
   }
-  _finish(){
-    this.raf=0;
-    const ms=Math.round(performance.now()-this.t0);
-    this.setStatus(this.maxIter()+' it · '+ms+' ms');
-    this.setProgress(1);
-    if(this.el) this.el.classList.remove('is-busy');
-    this.drawOverlay();
+  renderFast(){
+    ensureTables();
+    const w=Math.max(2,this.W>>1), h=Math.max(2,this.H>>1);
+    if(!this.fbuf||this.fbuf.length!==w*h){ this.fbuf=new Float32Array(w*h);
+      this.fcv=document.createElement('canvas'); this.fctx=this.fcv.getContext('2d'); }
+    this.fcv.width=w; this.fcv.height=h;
+    if(!this.fimg) this.fimg=this.fctx.createImageData(w,h);
+    const d=this.fimg.data; for(let i=3;i<d.length;i+=4) d[i]=255;
+    this.fd32=new Uint32Array(this.fimg.data.buffer);
+    const mi=Math.min(this.iterFor(),300);
+    compute(this.fbuf,w,h,this.cx,this.cy,this.halfH,mi,this.kind,S.deg,0,h);
+    paintBuf(this.fbuf,this.fd32,w,0,h);
+    this.fctx.putImageData(this.fimg,0,0);
+    this.ctx.imageSmoothingEnabled=true;
+    this.ctx.drawImage(this.fcv,0,0,this.W,this.H);
   }
-  setStatus(t){ if(this.statusEl) this.statusEl.textContent=t; }
-  setProgress(p){ if(this.progressEl) this.progressEl.style.width=(p*100).toFixed(1)+'%'; }
-  _row(P,y){
-    const u=(2*this.half)/P.sh, im=this.cy+(P.sh/2-y)*u, re0=this.cx-(P.sw/2)*u;
-    const data=P.img.data, lut=this.lut, dith=this.dither, dens=this.density, off=this.offset;
-    const ic=this.interior, maxIter=this.maxIter();
-    const store=(P.s===1)?this.values:null;
-    let o=y*P.sw*4, base=y*this.w;
-    if(this.kind==='mandel'){
-      for(let x=0;x<P.sw;x++){
-        const cr=re0+x*uppStep(u,x), ci=im;
-        let v;
-        const xm=cr-0.25, q=xm*xm+ci*ci;
-        if(q*(q+xm)<=0.25*ci*ci || (cr+1)*(cr+1)+ci*ci<=0.0625){ v=-1; }
-        else{
-          let zr=0,zi=0,z2=0,i2=0,i=0;
-          while(z2+i2<=4&&i<maxIter){ zi=2*zr*zi+ci; zr=z2-i2+cr; z2=zr*zr; i2=zi*zi; i++; }
-          if(i>=maxIter) v=-1; else { let s=i+1-Math.log(Math.log(z2+i2)*0.5/LOG2)/LOG2; v=s<0?0:s; }
-        }
-        if(store) store[base+x]=v;
-        if(v<0){ data[o]=ic[0];data[o+1]=ic[1];data[o+2]=ic[2]; }
-        else{ const t=Math.sqrt(v)*dens+off+dith[(y*131+x)&1023], k=((t|0)&MASK)*3; data[o]=lut[k];data[o+1]=lut[k+1];data[o+2]=lut[k+2]; }
-        o+=4;
+  render(){
+    if(!this.W) return;
+    cancelAnimationFrame(this.raf); this.gen++;
+    const gen=this.gen, t0=performance.now();
+    this.maxIterUsed=this.iterFor();
+    const bigger=this.maxIterUsed>tableMaxV;
+    tableMaxV=Math.max(tableMaxV,this.maxIterUsed);
+    if(bigger) tablesDirty=true;
+    ensureTables();
+    /* coarse preview first */
+    const s=this.W>520?6:4;
+    const cw=Math.max(2,Math.round(this.W/s)), ch=Math.max(2,Math.round(this.H/s));
+    if(!this.cbuf||this.cbuf.length!==cw*ch){ this.cbuf=new Float32Array(cw*ch);
+      this.ccv=document.createElement('canvas'); this.cctx=this.ccv.getContext('2d'); }
+    this.ccv.width=cw; this.ccv.height=ch;
+    if(!this.cimg) this.cimg=this.cctx.createImageData(cw,ch);
+    const cd=this.cimg.data; for(let i=3;i<cd.length;i+=4) cd[i]=255;
+    this.cd32=new Uint32Array(this.cimg.data.buffer);
+    compute(this.cbuf,cw,ch,this.cx,this.cy,this.halfH,Math.min(this.maxIterUsed,180),this.kind,S.deg,0,ch);
+    paintBuf(this.cbuf,this.cd32,cw,0,ch);
+    this.cctx.putImageData(this.cimg,0,0);
+    this.ctx.imageSmoothingEnabled=true;
+    this.ctx.drawImage(this.ccv,0,0,this.W,this.H);
+    /* progressive full-res scan */
+    this.frame.classList.add('rendering');
+    this.scanEl.style.transform='scaleX(0)';
+    const chunk=Math.max(8,Math.ceil(this.H/9));
+    let row=0;
+    const tick=()=>{
+      if(gen!==this.gen) return;
+      const end=Math.min(this.H,row+chunk);
+      compute(this.buf,this.W,this.H,this.cx,this.cy,this.halfH,this.maxIterUsed,this.kind,S.deg,row,end);
+      paintBuf(this.buf,this.d32,this.W,row,end);
+      this.ctx.putImageData(this.img,0,0,0,row,this.W,end-row);
+      row=end;
+      this.scanEl.style.transform='scaleX('+(row/this.H)+')';
+      if(row<this.H) this.raf=requestAnimationFrame(tick);
+      else{
+        this.frame.classList.remove('rendering');
+        this.ms=performance.now()-t0;
+        updateReadouts(); drawOverlay(this);
       }
-    } else {
-      const cr=this.c.re, ci=this.c.im;
-      for(let x=0;x<P.sw;x++){
-        let zr=re0+x*uppStep(u,x), zi=im, z2=zr*zr, i2=zi*zi, i=0;
-        while(z2+i2<=4&&i<maxIter){ zi=2*zr*zi+ci; zr=z2-i2+cr; z2=zr*zr; i2=zi*zi; i++; }
-        let v;
-        if(i>=maxIter) v=-1; else { s=i+1-Math.log(Math.log(z2+i2)*0.5/LOG2)/LOG2; v=s<0?0:s; }
-        if(store) store[base+x]=v;
-        if(v<0){ data[o]=ic[0];data[o+1]=ic[1];data[o+2]=ic[2]; }
-        else{ const t=Math.sqrt(v)*dens+off+dith[(y*131+x)&1023], k=((t|0)&MASK)*3; data[o]=lut[k];data[o+1]=lut[k+1];data[o+2]=lut[k+2]; }
-        o+=4;
-      }
-    }
-    function uppStep(u,x){ return u*x; }
+    };
+    this.raf=requestAnimationFrame(tick);
   }
-  recolor(){
-    if(!this.values) return;
-    const v=this.values, d=this.img.data, lut=this.lut, dith=this.dither, dens=this.density, off=this.offset, ic=this.interior;
-    for(let p=0,o=0,L=v.length;p<L;p++,o+=4){
-      const val=v[p];
-      if(val<0){ d[o]=ic[0];d[o+1]=ic[1];d[o+2]=ic[2]; continue; }
-      const t=Math.sqrt(val)*dens+off+dith[p&1023], k=((t|0)&MASK)*3;
-      d[o]=lut[k];d[o+1]=lut[k+1];d[o+2]=lut[k+2];
-    }
+  repaint(){
+    if(!this.buf) return;
+    ensureTables();
+    paintBuf(this.buf,this.d32,this.W,0,this.H);
     this.ctx.putImageData(this.img,0,0);
   }
-  /* ---- overlay: grid, markers, orbit ---- */
-  drawOverlay(){
-    if(!this.octx) return;
-    const o=this.octx;
-    o.clearRect(0,0,this.w,this.h);
-    if(this.showGrid) this._grid(o);
-    if(this.kind==='mandel') this._cMark(o); else this._orbit(o);
+  zoomAt(mx,my,f){
+    const hw=this.halfW, hh=this.halfH;
+    const px=this.cx+(mx-0.5)*2*hw, py=this.cy+(my-0.5)*2*hh;
+    let nh=hh*f; nh=Math.max(1e-13,Math.min(3.4,nh));
+    const nhw=nh*this.W/this.H;
+    this.cx=px-(mx-0.5)*2*nhw; this.cy=py-(my-0.5)*2*nh; this.halfH=nh;
   }
-  _grid(o){
-    const span=2*this.half, u=this.upp();
-    const raw=span/5, p=Math.pow(10,Math.floor(Math.log10(raw))), m=raw/p;
-    const step=(m>5?10:m>2?5:m>1?2:1)*p;
-    const x0=this.cx-(this.w/2)*u, x1=this.cx+(this.w/2)*u, y0=this.cy-(this.h/2)*u, y1=this.cy+(this.h/2)*u;
-    o.lineWidth=Math.max(1,this.dpr*0.7);
-    o.strokeStyle='rgba(255,255,255,.085)'; o.beginPath();
-    for(let v=Math.ceil(x0/step)*step; v<=x1; v+=step){ const px=Math.round((v-this.cx)/u+this.w/2)+.5; o.moveTo(px,0); o.lineTo(px,this.h); }
-    for(let v=Math.ceil(y0/step)*step; v<=y1; v+=step){ const py=Math.round(this.h/2-(v-this.cy)/u)+.5; o.moveTo(0,py); o.lineTo(this.w,py); }
-    o.stroke();
-    o.strokeStyle='rgba(255,255,255,.22)'; o.beginPath();
-    if(x0<=0&&x1>=0){ const px=Math.round(this.w/2-this.cx/u)+.5; o.moveTo(px,0); o.lineTo(px,this.h); }
-    if(y0<=0&&y1>=0){ const py=Math.round(this.h/2+this.cy/u)+.5; o.moveTo(0,py); o.lineTo(this.w,py); }
-    o.stroke();
-    const dp=Math.max(0,Math.min(10,Math.ceil(-Math.log10(step))));
-    o.font=(10*this.dpr)+'px '+MONO; o.fillStyle='rgba(226,232,242,.45)'; o.textBaseline='top'; o.textAlign='left';
-    for(let v=Math.ceil(x0/step)*step; v<=x1; v+=step){ const px=(v-this.cx)/u+this.w/2; if(px>this.w-46*this.dpr) continue; o.fillText(fmt(v,dp),px+4*this.dpr,this.h-15*this.dpr); }
-    for(let v=Math.ceil(y0/step)*step; v<=y1; v+=step){ const py=this.h/2-(v-this.cy)/u; if(py>this.h-14*this.dpr||py<2) continue; o.fillText(fmt(v,dp),6*this.dpr,py+3*this.dpr); }
-  }
-  _cMark(o){
-    const p=this.toPixel(this.c.re,this.c.im), d=this.dpr;
-    if(p.x<-30||p.x>this.w+30||p.y<-30||p.y>this.h+30) return;
-    o.save(); o.strokeStyle='#e3ab5f'; o.lineWidth=1.2*d;
-    o.beginPath(); o.arc(p.x,p.y,7*d,0,TAU); o.stroke();
-    o.beginPath();
-    o.moveTo(p.x-14*d,p.y); o.lineTo(p.x-9*d,p.y); o.moveTo(p.x+9*d,p.y); o.lineTo(p.x+14*d,p.y);
-    o.moveTo(p.x,p.y-14*d); o.lineTo(p.x,p.y-9*d); o.moveTo(p.x,p.y+9*d); o.lineTo(p.x,p.y+14*d);
-    o.stroke();
-    o.fillStyle='rgba(227,171,95,.85)'; o.font=(10*d)+'px '+MONO; o.fillText('c',p.x+11*d,p.y-13*d);
-    o.restore();
-  }
-  _orbit(o){
-    if(!this.orbit) return;
-    const pts=this.orbit.pts, d=this.dpr;
-    const n=Math.max(1,Math.min(pts.length,Math.floor(this.orbitPhase)));
-    const lim=1e5;
-    const px=q=>{const p=this.toPixel(q.re,q.im);return {x:Math.max(-lim,Math.min(lim,p.x)),y:Math.max(-lim,Math.min(lim,p.y))};};
-    o.save(); o.globalCompositeOperation='lighter';
-    o.lineWidth=1.1*d; o.strokeStyle='rgba(104,207,194,.5)'; o.beginPath();
-    for(let i=0;i<n;i++){ const p=px(pts[i]); if(i)o.lineTo(p.x,p.y); else o.moveTo(p.x,p.y); }
-    o.stroke();
-    for(let i=0;i<n;i++){ const p=px(pts[i]); o.fillStyle='rgba(104,207,194,'+(0.2+0.55*i/n)+')'; o.beginPath(); o.arc(p.x,p.y,1.9*d,0,TAU); o.fill(); }
-    const h=px(pts[n-1]);
-    o.fillStyle='#e3ab5f'; o.beginPath(); o.arc(h.x,h.y,3.3*d,0,TAU); o.fill();
-    o.strokeStyle='rgba(227,171,95,.35)'; o.lineWidth=d;
-    o.beginPath(); o.arc(h.x,h.y,(7+3*Math.sin(performance.now()/280))*d,0,TAU); o.stroke();
-    const z0=this.toPixel(0,0);
-    o.strokeStyle='rgba(255,255,255,.5)'; o.beginPath(); o.arc(z0.x,z0.y,3*d,0,TAU); o.stroke();
-    o.restore();
+  toComplex(clientX,clientY){
+    const r=this.cv.getBoundingClientRect();
+    const mx=(clientX-r.left)/r.width, my=(clientY-r.top)/r.height;
+    return {x:this.cx+(mx-0.5)*2*this.halfW, y:this.cy+(my-0.5)*2*this.halfH, mx, my};
   }
 }
 
-/* ============ plates ============ */
-const mPlate=new Plate({el:$('#plateM'),canvas:$('#cvM'),overlay:$('#ovM'),stage:$('#stageM'),statusEl:$('#mStatus'),progressEl:$('#mProg'),
-  kind:'mandel',cx:-0.65,cy:0,half:1.35,baseIter:320,density:34,palette:'glacier'});
-const jPlate=new Plate({el:$('#plateJ'),canvas:$('#cvJ'),overlay:$('#ovJ'),stage:$('#stageJ'),statusEl:$('#jStatus'),progressEl:$('#jProg'),
-  kind:'julia',cx:0,cy:0,half:1.55,baseIter:320,density:30,palette:'ember',c:{re:-0.4,im:0.6},offset:120});
-const locPlate=new Plate({canvas:$('#cvLoc'),overlay:$('#ovLoc'),stage:$('#cvLoc').parentElement,kind:'mandel',
-  interactive:false,showGrid:false,cx:-0.65,cy:0,half:1.35,baseIter:170,density:22,palette:'glacier',quality:1.4});
+const M=new View('#cvM','#ovM','#frameM',0,1.30);
+const J=new View('#cvJ','#ovJ','#frameJ',1,1.60);
+M.cx=-0.65; M.cy=0; M.halfH=1.30;
+J.cx=0; J.cy=0; J.halfH=1.60;
 
-/* ============ state ============ */
-let pinned=false, driftOn=true, orbitOn=true, baseIter=320;
-
-/* ============ c plumbing ============ */
-const cRe=$('#cRe'), cIm=$('#cIm');
-function setC(re,im,opt){
-  opt=opt||{};
-  re=Math.max(-1.9,Math.min(1.9,re)); im=Math.max(-1.9,Math.min(1.9,im));
-  jPlate.c.re=re; jPlate.c.im=im;
-  jPlate.orbit=computeOrbit(re,im,46); jPlate.orbitPhase=0;
-  if(!opt.skipSliders){ cRe.value=re; cIm.value=im; }
-  $('#cReOut').textContent=fmt(re,3); $('#cImOut').textContent=fmt(im,3);
-  $('#cOut').textContent=cplx(re,im,4);
-  $('#tkC').textContent=cplx(re,im,4);
-  const inside=inMandel(re,im,700), b=$('#cBadge');
-  b.textContent=inside?'c ∈ M · J connected':'c ∉ M · Cantor dust';
-  b.classList.toggle('out',!inside);
-  if(opt.render!==false){ if(opt.fast) jPlate.startRender({passes:[6]}); else jPlate.scheduleRender(true); }
-  jPlate.drawOverlay();
-}
-cRe.addEventListener('input',()=>{pinned=false;pinUI();setC(+cRe.value,jPlate.c.im,{skipSliders:true});});
-cIm.addEventListener('input',()=>{pinned=false;pinUI();setC(jPlate.c.re,+cIm.value,{skipSliders:true});});
-function pinUI(){ const b=$('#pinBadge'); b.textContent=pinned?'c pinned':'c follows cursor'; b.classList.toggle('on',pinned); }
-
-/* ============ navigation ============ */
-function attachNav(plate,onHover,onClick){
-  const st=plate.stage; let down=null,moved=0,hoverQ=false,hoverZ=null;
-  st.addEventListener('pointerdown',e=>{
-    if(!plate.interactive)return;
-    down={x:e.clientX,y:e.clientY,cx:plate.cx,cy:plate.cy}; moved=0;
-    try{st.setPointerCapture(e.pointerId);}catch(err){}
-    st.classList.add('panning');
-  });
-  st.addEventListener('pointermove',e=>{
-    if(!plate.interactive)return;
-    const r=st.getBoundingClientRect();
-    const z=plate.toComplex((e.clientX-r.left)*plate.dpr,(e.clientY-r.top)*plate.dpr);
-    if(down){
-      const dx=e.clientX-down.x, dy=e.clientY-down.y; moved=Math.max(moved,Math.hypot(dx,dy));
-      const u=plate.upp();
-      plate.cx=down.cx-dx*plate.dpr*u; plate.cy=down.cy+dy*plate.dpr*u;
-      plate.scheduleRender(true); updateReadouts();
-    }
-    if(onHover){ hoverZ=z; if(!hoverQ){hoverQ=true;requestAnimationFrame(()=>{hoverQ=false;if(hoverZ)onHover(hoverZ,down&&moved>4);});} }
-  });
-  const up=e=>{
-    if(down&&moved<5&&onClick){ const r=st.getBoundingClientRect(); onClick(plate.toComplex((e.clientX-r.left)*plate.dpr,(e.clientY-r.top)*plate.dpr)); }
-    down=null; st.classList.remove('panning');
-  };
-  st.addEventListener('pointerup',up);
-  st.addEventListener('pointercancel',()=>{down=null;st.classList.remove('panning');});
-  st.addEventListener('pointerleave',()=>{ if(onHover) onHover(null,false); });
-  st.addEventListener('wheel',e=>{
-    if(!plate.interactive)return;
-    e.preventDefault();
-    const r=st.getBoundingClientRect();
-    const px=(e.clientX-r.left)*plate.dpr, py=(e.clientY-r.top)*plate.dpr;
-    const before=plate.toComplex(px,py);
-    const dy=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?100:1);
-    const f=Math.exp(-Math.max(-260,Math.min(260,dy))*0.0022);
-    plate.half=Math.max(1e-12,Math.min(3.2,plate.half/f));
-    const after=plate.toComplex(px,py);
-    plate.cx+=before.re-after.re; plate.cy+=before.im-after.im;
-    plate.scheduleRender(true); updateReadouts();
-  },{passive:false});
-  st.addEventListener('dblclick',()=>{ plate.cx=plate.home.cx; plate.cy=plate.home.cy; plate.half=plate.home.half; plate.startRender(); updateReadouts(); });
+function repaintAll(){
+  ensureTables();
+  M.repaint(); J.repaint();
+  thumbs.forEach(t=>{ if(t.buf){ paintBuf(t.buf,t.d32,t.w,0,t.h); t.ctx.putImageData(t.img,0,0); } });
 }
 
-attachNav(mPlate,(z,panning)=>{
-  if(z){
-    $('#mCursor').textContent=cplx(z.re,z.im,dpFor(2*mPlate.half));
-    if(!pinned&&!panning) setC(z.re,z.im,{fast:true});
-  } else $('#mCursor').textContent='—';
-},z=>{ pinned=true; pinUI(); setC(z.re,z.im); });
-
-attachNav(jPlate,null,null);
-
-/* ============ presets ============ */
-const MP=[
-  {n:'home',cx:-0.65,cy:0,half:1.35},
-  {n:'seahorse valley',cx:-0.7436438870371587,cy:0.13182590420531197,half:0.012},
-  {n:'elephant valley',cx:-1.25066,cy:0.02012,half:0.011},
-  {n:'triple spiral',cx:-0.088,cy:0.654,half:0.0055},
-  {n:'satellite',cx:-1.768778833,cy:0.001738996,half:0.00022},
-  {n:'mini Mandelbrot',cx:0.354259,cy:0.051838,half:0.0009},
-  {n:'Dudenze',cx:-0.7269,cy:0.1889,half:0.0026}
-];
-const mpWrap=$('#mPresets');
-MP.forEach((p,i)=>{
-  const b=document.createElement('button'); b.className='chip'+(i===0?' on':''); b.textContent=p.n;
-  b.onclick=()=>{ mPlate.cx=p.cx;mPlate.cy=p.cy;mPlate.half=p.half; mpWrap.querySelectorAll('.chip').forEach(x=>x.classList.toggle('on',x===b)); mPlate.startRender(); updateReadouts(); };
-  mpWrap.appendChild(b);
-});
-const JP=[
-  {n:'basilica',re:-1,im:0},{n:'rabbit',re:-0.123,im:0.745},{n:'butterfly',re:0.285,im:0.01},
-  {n:'siegel disk',re:-0.391,im:0.6093},{n:'airplane',re:-1.315,im:0},{n:'dendrite',re:0,im:1},
-  {n:'san marco',re:-0.75,im:0},{n:'dust',re:0.35,im:1.05}
-];
-const jpWrap=$('#jPresets');
-JP.forEach(p=>{
-  const b=document.createElement('button'); b.className='chip'; b.textContent=p.n;
-  b.onclick=()=>{ pinned=true; pinUI(); setC(p.re,p.im); jpWrap.querySelectorAll('.chip').forEach(x=>x.classList.toggle('on',x===b)); };
-  jpWrap.appendChild(b);
-});
-
-/* ============ atlas ============ */
-const ATLAS=[
-  {n:"Basilica",re:-1,im:0},{n:"Douady's rabbit",re:-0.123,im:0.745},{n:"Douady's butterfly",re:0.285,im:0.01},
-  {n:"Siegel disk",re:-0.391,im:0.6093},{n:"Airplane",re:-1.315,im:0},{n:"Dendrite",re:0,im:1},
-  {n:"San Marco",re:-0.75,im:0},{n:"Spiral galaxy",re:-0.4,im:0.6},{n:"Cantor dust",re:0.35,im:1.05}
-];
-const atlas=$('#atlas');
-ATLAS.forEach(a=>{
-  const item=document.createElement('button'); item.className='atlas-item';
-  item.innerHTML='<span class="ai-stage"><canvas></canvas></span><span class="ai-name">'+a.n+'</span><span class="ai-c mono">'+cplx(a.re,a.im,4)+'</span><span class="ai-tag mono"></span>';
-  atlas.appendChild(item);
-  const inside=inMandel(a.re,a.im,600), tag=item.querySelector('.ai-tag');
-  tag.textContent=inside?'c ∈ M · connected':'c ∉ M · dust'; if(!inside) tag.classList.add('no');
-  new Plate({canvas:item.querySelector('canvas'),stage:item.querySelector('.ai-stage'),kind:'julia',interactive:false,showGrid:false,
-    cx:0,cy:0,half:1.5,baseIter:130,density:26,palette:'ember',c:{re:a.re,im:a.im},quality:1.2,offset:60});
-  item.addEventListener('click',()=>{
-    pinned=true; pinUI(); setC(a.re,a.im);
-    $('#plateJ').scrollIntoView({behavior:'smooth',block:'center'});
-  });
-});
-
-/* ============ swatches ============ */
-document.querySelectorAll('[data-palettes]').forEach(group=>{
-  const plate=group.dataset.palettes==='M'?mPlate:jPlate;
-  Object.keys(STOPS).forEach(name=>{
-    const b=document.createElement('button');
-    b.className='sw'+(name===plate.palette?' on':''); b.title=name; b.setAttribute('aria-label','palette '+name);
-    b.style.background=gradCSS(name);
-    b.onclick=()=>{ plate.setPalette(name); group.querySelectorAll('.sw').forEach(x=>x.classList.toggle('on',x===b)); };
-    group.appendChild(b);
-  });
-});
-
-/* ============ console ============ */
-$('#iterCtl').addEventListener('input',e=>{
-  baseIter=+e.target.value; $('#iterOut').textContent=baseIter;
-  mPlate.baseIter=baseIter; jPlate.baseIter=baseIter;
-  mPlate.scheduleRender(true); jPlate.scheduleRender(true); updateReadouts();
-});
-$('#densCtl').addEventListener('input',e=>{
-  const d=+e.target.value; $('#densOut').textContent=d;
-  mPlate.density=d; jPlate.density=d; mPlate.recolor(); jPlate.recolor();
-});
-function toggle(id,fn){ const b=$(id); b.addEventListener('click',()=>{ const on=b.getAttribute('aria-pressed')!=='true'; b.setAttribute('aria-pressed',on); fn(on); }); }
-toggle('#driftCtl',on=>{driftOn=on;});
-toggle('#gridCtl',on=>{ mPlate.showGrid=on; jPlate.showGrid=on; mPlate.drawOverlay(); jPlate.drawOverlay(); });
-toggle('#orbitCtl',on=>{ orbitOn=on; jPlate.drawOverlay(); });
-$('#qualCtl').addEventListener('click',e=>{
-  const b=e.target.closest('button'); if(!b)return;
-  $('#qualCtl').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
-  const q=+b.dataset.q; mPlate.setQuality(q); jPlate.setQuality(q);
-});
-$('#mReset').onclick=()=>{ mPlate.cx=mPlate.home.cx;mPlate.cy=mPlate.home.cy;mPlate.half=mPlate.home.half;mPlate.startRender();updateReadouts(); };
-$('#jReset').onclick=()=>{ jPlate.cx=0;jPlate.cy=0;jPlate.half=1.55;jPlate.startRender(); };
-$('#resetAll').onclick=()=>{ mPlate.cx=mPlate.home.cx;mPlate.cy=mPlate.home.cy;mPlate.half=mPlate.home.half;mPlate.startRender();
-  jPlate.cx=0;jPlate.cy=0;jPlate.half=1.55;jPlate.startRender(); updateReadouts(); };
-$('#cShuffle').onclick=()=>{
-  const r=Math.sqrt(Math.random())*0.92, t=Math.random()*TAU;
-  const tr={re:Math.cos(t)*r,im:Math.sin(t)*r}, from={re:jPlate.c.re,im:jPlate.c.im};
-  const t0=performance.now(), dur=760;
-  pinned=true; pinUI();
-  (function step(){
-    const k=Math.min(1,(performance.now()-t0)/dur), e=k<.5?4*k*k*k:1-Math.pow(-2*k+2,3)/2;
-    setC(from.re+(tr.re-from.re)*e, from.im+(tr.im-from.im)*e, {fast:true});
-    if(k<1) requestAnimationFrame(step); else jPlate.startRender();
-  })();
-};
-
-/* ============ readouts + locator ============ */
-function updateReadouts(){
-  const span=2*mPlate.half, dp=dpFor(span);
-  $('#mCenter').textContent=fmt(mPlate.cx,dp)+', '+fmt(mPlate.cy,dp);
-  $('#mSpan').textContent=span<1e-4?span.toExponential(2):span.toFixed(4);
-  $('#mIter').textContent=mPlate.maxIter();
-  $('#tkIter').textContent=mPlate.maxIter();
-  const zoom=2.7/span;
-  $('#tkZoom').textContent=zoom>=1000?zoom.toExponential(1)+'×':zoom.toFixed(1)+'×';
-  $('#footNote').innerHTML=span<1e-11?'<span class="warn">double-precision floor reached — pixelation is the machine, not the set</span>':'z ↦ z² + c';
-  drawLocator();
+/* ═══════════════ overlays ═══════════════ */
+function niceStep(target){
+  const p=Math.pow(10,Math.floor(Math.log10(target)));
+  for(const m of [1,2,5,10]) if(p*m>=target) return p*m;
+  return p*10;
 }
-function drawLocator(){
-  const o=locPlate.octx; if(!o) return;
-  const W=locPlate.w,H=locPlate.h;
+function drawOverlay(v){
+  const o=v.octx, W=v.W, H=v.H, d=v.dpr||1;
   o.clearRect(0,0,W,H);
-  const u=mPlate.upp();
-  const L=mPlate.cx-(mPlate.w/2)*u, R=mPlate.cx+(mPlate.w/2)*u, B=mPlate.cy-(mPlate.h/2)*u, T=mPlate.cy+(mPlate.h/2)*u;
-  const a=locPlate.toPixel(L,T), b=locPlate.toPixel(R,B);
-  const x=Math.max(0,Math.min(W,a.x)), y=Math.max(0,Math.min(H,a.y));
-  const w=Math.max(2,Math.min(W,b.x-a.x)), h=Math.max(2,Math.min(H,b.y-a.y));
-  o.save();
-  o.fillStyle='rgba(0,0,0,.55)'; o.fillRect(0,0,W,y); o.fillRect(0,y+h,W,H-y-h); o.fillRect(0,0,x,h); o.fillRect(x+w,0,W-x-w,h);
-  o.strokeStyle='#e3ab5f'; o.lineWidth=Math.max(1,locPlate.dpr);
-  o.strokeRect(x+.5,y+.5,w,h);
-  o.restore();
+  /* axes of the complex plane */
+  const hw=v.halfW, hh=v.halfH;
+  const px=x=>(x-v.cx)/(2*hw)*W+W/2, py=y=>(y-v.cy)/(2*hh)*H+H/2;
+  o.strokeStyle='rgba(233,238,245,.13)'; o.lineWidth=1*d; o.setLineDash([3*d,4*d]);
+  if(0>v.cy-hh&&v.cy+hh>0){ o.beginPath(); o.moveTo(0,py(0)); o.lineTo(W,py(0)); o.stroke(); }
+  if(0>v.cx-hw&&v.cx+hw>0){ o.beginPath(); o.moveTo(px(0),0); o.lineTo(px(0),H); o.stroke(); }
+  o.setLineDash([]);
+  /* scale bar */
+  const barTarget=(2*hw)*(110*d)/W, step=niceStep(barTarget);
+  const len=step*W/(2*hw), bx=12*d, by=H-16*d;
+  o.strokeStyle='rgba(233,238,245,.55)'; o.lineWidth=1*d;
+  o.beginPath(); o.moveTo(bx,by-4*d); o.lineTo(bx,by); o.lineTo(bx+len,by); o.lineTo(bx+len,by-4*d); o.stroke();
+  o.font=(9.5*d)+'px ui-monospace, SFMono-Regular, Menlo, monospace';
+  o.fillStyle='rgba(233,238,245,.6)';
+  o.fillText(step>=1e-3?step.toPrecision(2):step.toExponential(1), bx, by-7*d);
+  /* crosshair */
+  if(v.hover){
+    const hx=v.hover.mx*W, hy=v.hover.my*H;
+    o.strokeStyle='rgba(242,166,59,.5)'; o.lineWidth=1*d; o.setLineDash([2*d,3*d]);
+    o.beginPath(); o.moveTo(hx,0); o.lineTo(hx,H); o.moveTo(0,hy); o.lineTo(W,hy); o.stroke();
+    o.setLineDash([]);
+    o.strokeStyle='rgba(242,166,59,.95)'; o.lineWidth=1.2*d;
+    o.beginPath(); o.arc(hx,hy,7*d,0,6.2832); o.stroke();
+  }
+  /* the c marker lives on Plate I */
+  if(v.kind===0){
+    const mx=px(S.cRe), my=py(S.cIm);
+    if(mx>-20&&mx<W+20&&my>-20&&my<H+20){
+      o.strokeStyle='#7fc7e8'; o.lineWidth=1.4*d;
+      o.beginPath(); o.arc(mx,my,5.5*d,0,6.2832); o.stroke();
+      o.beginPath(); o.moveTo(mx-10*d,my); o.lineTo(mx-6*d,my);
+      o.moveTo(mx+6*d,my); o.lineTo(mx+10*d,my);
+      o.moveTo(mx,my-10*d); o.lineTo(mx,my-6*d);
+      o.moveTo(mx,my+6*d); o.lineTo(mx,my+10*d); o.stroke();
+      o.fillStyle='rgba(127,199,232,.9)';
+      o.font=(9*d)+'px ui-monospace, SFMono-Regular, Menlo, monospace';
+      o.fillText('c', mx+9*d, my-8*d);
+    }
+  } else {
+    /* orbit of 0 traced on the Julia plate */
+    const pts=orbitPoints(64);
+    if(pts.length>1){
+      o.lineWidth=1.1*d;
+      for(let i=1;i<pts.length;i++){
+        o.strokeStyle='rgba(242,166,59,'+(0.75*(1-i/pts.length)+0.12).toFixed(3)+')';
+        o.beginPath(); o.moveTo(px(pts[i-1][0]),py(pts[i-1][1])); o.lineTo(px(pts[i][0]),py(pts[i][1])); o.stroke();
+      }
+      for(let i=0;i<pts.length;i++){
+        const x=px(pts[i][0]), y=py(pts[i][1]);
+        if(x<-4||x>W+4||y<-4||y>H+4) continue;
+        o.fillStyle= i===0 ? '#ffffff' : 'rgba(255,255,255,.75)';
+        o.beginPath(); o.arc(x,y,(i===0?3:1.7)*d,0,6.2832); o.fill();
+      }
+    }
+  }
+}
+function orbitPoints(N){
+  const p=[]; let zx=0,zy=0;
+  for(let n=0;n<=N;n++){
+    p.push([zx,zy]);
+    if(!isFinite(zx)||zx*zx+zy*zy>1e6) break;
+    if(S.deg===2){ const t=zx*zx-zy*zy+S.cRe; zy=2*zx*zy+S.cIm; zx=t; }
+    else{ let rx=zx,ry=zy;
+      for(let k=1;k<S.deg;k++){ const t=rx*zx-ry*zy; ry=rx*zy+ry*zx; rx=t; }
+      zx=rx+S.cRe; zy=ry+S.cIm;
+    }
+  }
+  return p;
 }
 
-/* ============ animation loop ============ */
-let last=0;
-function loop(t){
-  requestAnimationFrame(loop);
-  if(t-last<26) return; last=t;
-  if(driftOn){
-    mPlate.offset=(mPlate.offset+0.5)%LUT_SIZE;
-    jPlate.offset=(jPlate.offset+0.5)%LUT_SIZE;
-    mPlate.recolor(); jPlate.recolor();
-  }
-  if(orbitOn&&jPlate.orbit){
-    jPlate.orbitPhase+=0.30;
-    if(jPlate.orbitPhase>jPlate.orbit.pts.length+26) jPlate.orbitPhase=0;
-    jPlate.drawOverlay();
-  }
-  $('#tkStatus').textContent=mPlate.statusEl?mPlate.statusEl.textContent:'';
+/* ═══════════════ readouts & analysis ═══════════════ */
+const fmt=(x,n)=> (x<0?'−':'')+Math.abs(x).toFixed(n);
+function zoomStr(v){
+  const z=v.refHalf/v.halfH;
+  if(z<1000) return z.toFixed(z<10?1:0)+'×';
+  const e=Math.floor(Math.log10(z));
+  return (z/Math.pow(10,e)).toFixed(2)+'e'+e+'×';
 }
-requestAnimationFrame(loop);
-
-/* ============ keys + reveals ============ */
-addEventListener('keydown',e=>{
-  if(e.target.tagName==='INPUT') return;
-  const k=e.key.toLowerCase();
-  if(k==='r'){ $('#resetAll').click(); }
-  else if(k==='g'){ $('#gridCtl').click(); }
-  else if(k==='o'){ $('#orbitCtl').click(); }
-  else if(k===' '){ e.preventDefault(); $('#driftCtl').click(); }
-  else if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
-    const dir=e.key==='ArrowLeft'?-1:1;
-    [mPlate,jPlate].forEach(p=>{
-      const names=Object.keys(STOPS), i=(names.indexOf(p.palette)+dir+names.length)%names.length;
-      p.setPalette(names[i]);
-      const g=document.querySelector('[data-palettes="'+(p===mPlate?'M':'J')+'"]');
-      if(g) g.querySelectorAll('.sw').forEach((x,xi)=>x.classList.toggle('on',xi===i));
-    });
+function updateReadouts(){
+  $('#mCenter').textContent=fmt(M.cx,6)+', '+fmt(M.cy,6);
+  $('#mSpan').textContent=(2*M.halfH).toPrecision(4);
+  $('#mZoom').textContent=zoomStr(M);
+  $('#mIter').textContent=M.maxIterUsed;
+  $('#mMs').textContent=M.ms.toFixed(0)+' ms';
+  $('#jIter').textContent=J.maxIterUsed;
+  $('#jMs').textContent=J.ms.toFixed(0)+' ms';
+  $('#jC').textContent=fmt(S.cRe,5)+(S.cIm<0?' − ':' + ')+Math.abs(S.cIm).toFixed(5)+' i';
+  $('#cMod').textContent=Math.hypot(S.cRe,S.cIm).toFixed(4);
+  $('#warnM').classList.toggle('show', (M.refHalf/M.halfH)>4e12);
+}
+function analyse(){
+  let zx=0,zy=0,esc=-1;
+  for(let n=0;n<=700;n++){
+    if(zx*zx+zy*zy>4){ esc=n; break; }
+    if(S.deg===2){ const t=zx*zx-zy*zy+S.cRe; zy=2*zx*zy+S.cIm; zx=t; }
+    else{ let rx=zx,ry=zy;
+      for(let k=1;k<S.deg;k++){ const t=rx*zx-ry*zy; ry=rx*zy+ry*zx; rx=t; }
+      zx=rx+S.cRe; zy=ry+S.cIm;
+    }
   }
+  const b=$('#badgeJ');
+  if(esc>=0){ b.className='badge off';
+    b.textContent = S.deg===2 ? 'c ∉ ℳ · 𝒥𝒸 is a dust' : 'outside · disconnected';
+    $('#orbitTag').textContent='escapes at n = '+esc;
+  }else{
+    const p=findPeriod(zx,zy,S.cRe,S.cIm,S.deg);
+    b.className='badge on';
+    b.textContent = p ? 'c ∈ ℳ · attracting cycle '+p : 'c ∈ ℳ · connected';
+    $('#orbitTag').textContent = p ? 'trapped, period '+p : 'bounded';
+  }
+}
+
+/* ═══════════════ orbit chart ═══════════════ */
+const oc=$('#cvOrbit'); const octx=oc.getContext('2d');
+let orbitSeries=[], orbitEsc=-1, orbitProg=0, orbitRaf=0;
+function computeSeries(){
+  orbitSeries=[]; orbitEsc=-1;
+  let zx=0,zy=0;
+  for(let n=0;n<=56;n++){
+    orbitSeries.push(Math.hypot(zx,zy));
+    if(orbitEsc<0 && zx*zx+zy*zy>S.R*S.R) orbitEsc=n;
+    if(S.deg===2){ const t=zx*zx-zy*zy+S.cRe; zy=2*zx*zy+S.cIm; zx=t; }
+    else{ let rx=zx,ry=zy;
+      for(let k=1;k<S.deg;k++){ const t=rx*zx-ry*zy; ry=rx*zy+ry*zx; rx=t; }
+      zx=rx+S.cRe; zy=ry+S.cIm;
+    }
+    if(!isFinite(zx)) break;
+  }
+}
+function drawChart(prog){
+  const r=oc.getBoundingClientRect(), dpr=Math.min(window.devicePixelRatio||1,2);
+  const W=Math.round(r.width*dpr), H=Math.round(96*dpr);
+  if(oc.width!==W||oc.height!==H){ oc.width=W; oc.height=H; }
+  const c=octx; c.clearRect(0,0,W,H);
+  const ymax=Math.max(2.4,S.R*1.02), pad=6*dpr;
+  const X=n=>pad+ n/(orbitSeries.length-1)*(W-2*pad);
+  const Y=v=>H-pad-(Math.min(v,ymax)/ymax)*(H-2*pad);
+  c.strokeStyle='rgba(150,175,205,.14)'; c.lineWidth=1;
+  for(let g=1;g<=2;g++){ const y=Y(g); c.beginPath(); c.moveTo(pad,y); c.lineTo(W-pad,y); c.stroke(); }
+  c.setLineDash([3*dpr,3*dpr]); c.strokeStyle='rgba(226,101,122,.6)';
+  const yR=Y(S.R); c.beginPath(); c.moveTo(pad,yR); c.lineTo(W-pad,yR); c.stroke(); c.setLineDash([]);
+  c.font=(9*dpr)+'px ui-monospace, SFMono-Regular, Menlo, monospace';
+  c.fillStyle='rgba(226,101,122,.8)'; c.fillText('R = '+S.R,W-pad-46*dpr,yR-4*dpr);
+  const n=Math.max(1,Math.floor(prog*(orbitSeries.length-1)));
+  const grad=c.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,'rgba(242,166,59,.30)'); grad.addColorStop(1,'rgba(242,166,59,0)');
+  c.beginPath(); c.moveTo(X(0),H-pad);
+  for(let i=0;i<=n;i++) c.lineTo(X(i),Y(orbitSeries[i]));
+  c.lineTo(X(n),H-pad); c.closePath(); c.fillStyle=grad; c.fill();
+  c.beginPath();
+  for(let i=0;i<=n;i++){ const x=X(i),y=Y(orbitSeries[i]); i?c.lineTo(x,y):c.moveTo(x,y); }
+  c.strokeStyle='#f2a63b'; c.lineWidth=1.4*dpr; c.stroke();
+  const ex=orbitEsc>=0&&orbitEsc<=n?orbitEsc:n;
+  c.fillStyle='#e9eef5'; c.beginPath(); c.arc(X(ex),Y(orbitSeries[ex]),2.4*dpr,0,6.2832); c.fill();
+}
+function animateChart(){
+  cancelAnimationFrame(orbitRaf); orbitProg=0;
+  const t0=performance.now();
+  const step=()=>{
+    orbitProg=Math.min(1,(performance.now()-t0)/520);
+    drawChart(orbitProg);
+    if(orbitProg<1) orbitRaf=requestAnimationFrame(step);
+  };
+  orbitRaf=requestAnimationFrame(step);
+}
+
+/* ═══════════════ parameter plumbing ═══════════════ */
+let juliaQuick=0, juliaFull=0;
+function setC(a,b,quick){
+  S.cRe=a; S.cIm=b;
+  $('#cre').value=a; $('#cim').value=b;
+  $('#creOut').textContent=fmt(a,5); $('#cimOut').textContent=fmt(b,5);
+  analyse(); computeSeries(); animateChart(); updateReadouts();
+  drawOverlay(J);
+  cancelAnimationFrame(juliaQuick); cancelAnimationFrame(juliaFull);
+  if(quick){
+    juliaQuick=requestAnimationFrame(()=>J.renderFast());
+    juliaFull=setTimeout(()=>J.render(),170);
+  } else J.schedule(0);
+}
+
+/* ═══════════════ interaction ═══════════════ */
+function attach(v,isM){
+  const cv=v.cv;
+  let pid=null,drag=false,moved=false,sx=0,sy=0;
+  cv.addEventListener('pointerdown',e=>{
+    pid=e.pointerId; drag=true; moved=false; sx=e.clientX; sy=e.clientY;
+    cv.setPointerCapture(pid); v.snapNow();
+    hideHint(v);
+  });
+  cv.addEventListener('pointermove',e=>{
+    if(drag&&pid===e.pointerId){
+      const r=cv.getBoundingClientRect();
+      const dx=e.clientX-sx, dy=e.clientY-sy;
+      if(Math.abs(dx)+Math.abs(dy)>4) moved=true;
+      if(moved){
+        v.cx=v.snapView.cx-dx/r.width*2*v.halfW;
+        v.cy=v.snapView.cy-dy/r.height*2*v.halfH;
+        v.drawSnap(); v.schedule(150);
+      }
+    } else if(isM){
+      const p=v.toComplex(e.clientX,e.clientY);
+      v.hover={mx:p.mx,my:p.my}; drawOverlay(v);
+      if(S.couple) setC(p.x,p.y,true);
+    } else {
+      const p=v.toComplex(e.clientX,e.clientY);
+      v.hover={mx:p.mx,my:p.my}; drawOverlay(v);
+    }
+  });
+  const end=e=>{
+    if(!drag) return; drag=false;
+    if(!moved){
+      const p=v.toComplex(e.clientX,e.clientY);
+      v.zoomAt(p.mx,p.my, e.shiftKey?1/2.2:1/2.2);
+      v.render();
+    } else v.render();
+    v.snapNow();
+  };
+  cv.addEventListener('pointerup',end);
+  cv.addEventListener('pointercancel',()=>{drag=false;});
+  cv.addEventListener('pointerleave',()=>{ if(!drag){ v.hover=null; drawOverlay(v);} });
+  cv.addEventListener('wheel',e=>{
+    e.preventDefault(); hideHint(v);
+    const p=v.toComplex(e.clientX,e.clientY);
+    v.zoomAt(p.mx,p.my,Math.exp(e.deltaY*0.0016));
+    v.schedule(80);
+  },{passive:false});
+  cv.addEventListener('dblclick',e=>{
+    const p=v.toComplex(e.clientX,e.clientY);
+    v.zoomAt(p.mx,p.my,1/4); v.render();
+  });
+}
+function hideHint(v){ const h=v.frame.querySelector('.hint'); if(h) h.classList.add('gone'); }
+attach(M,true); attach(J,false);
+
+/* ═══════════════ controls ═══════════════ */
+const bind=(id,key,fmtFn,after)=>{
+  const el=$(id), out=$(id+'Out');
+  const upd=()=>{
+    S[key]=parseFloat(el.value);
+    out.textContent=fmtFn?fmtFn(S[key]):String(S[key]);
+    if(after) after();
+  };
+  el.addEventListener('input',upd); upd();
+};
+bind('#iters','maxIter',null,()=>{ tablesDirty=true; tableMaxV=Math.max(tableMaxV,S.maxIter); M.schedule(60); J.schedule(60); });
+bind('#radius','R',v=>v.toFixed(1),()=>{ $('#rEcho').textContent=S.R.toFixed(1);
+  computeSeries(); animateChart(); M.schedule(80); J.schedule(80); });
+bind('#degree','deg',null,()=>{ analyse(); computeSeries(); animateChart();
+  M.schedule(60); J.schedule(60); thumbs.forEach(renderThumb); });
+bind('#dens','density',v=>v.toFixed(3),()=>{ tablesDirty=true; requestAnimationFrame(repaintAll); });
+bind('#off','offset',v=>v.toFixed(2),()=>{ tablesDirty=true; requestAnimationFrame(repaintAll); });
+$('#cre').addEventListener('input',()=>setC(parseFloat($('#cre').value),S.cIm,false));
+$('#cim').addEventListener('input',()=>setC(S.cRe,parseFloat($('#cim').value),false));
+
+function toggle(id,key,after){
+  const b=$(id);
+  b.addEventListener('click',()=>{
+    S[key]=!S[key]; b.setAttribute('aria-pressed',String(S[key]));
+    if(after) after();
+  });
+  b.setAttribute('aria-pressed',String(S[key]));
+}
+toggle('#tCouple','couple');
+toggle('#tSmooth','smooth',()=>{ tablesDirty=true; repaintAll(); M.schedule(40); J.schedule(40); });
+toggle('#tPeriod','periods',()=>{ M.schedule(40); J.schedule(40); });
+toggle('#tShimmer','shimmer',()=>{ if(S.shimmer) shimmerLoop(); });
+toggle('#tAnim','anim',()=>{ if(S.anim) animLoop(); });
+
+$('#bResetM').addEventListener('click',()=>{ M.cx=-0.65;M.cy=0;M.halfH=1.30;M.render(); });
+$('#bResetJ').addEventListener('click',()=>{ J.cx=0;J.cy=0;J.halfH=1.60;J.render(); });
+$('#bZoomIn').addEventListener('click',()=>{ M.zoomAt(.5,.5,1/2); M.render(); });
+$('#bZoomOut').addEventListener('click',()=>{ M.zoomAt(.5,.5,2); M.render(); });
+$('#bRandom').addEventListener('click',randomC);
+function randomC(){
+  const th=Math.random()*Math.PI*2, j=0.96+Math.random()*0.09;
+  const a=(Math.cos(th)/2-Math.cos(2*th)/4)*j;
+  const b=(Math.sin(th)/2-Math.sin(2*th)/4)*j;
+  setC(a,b,false);
+}
+
+/* palette swatches */
+const palsEl=$('#pals');
+PALETTES.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.className='pal'; b.type='button'; b.setAttribute('aria-pressed',String(i===0));
+  const sw=document.createElement('span'); sw.className='sw';
+  sw.style.background='linear-gradient(90deg,'+p.stops.concat([p.stops[0]]).join(',')+')';
+  const nm=document.createElement('span'); nm.className='nm'; nm.textContent=p.name;
+  b.appendChild(sw); b.appendChild(nm);
+  b.addEventListener('click',()=>setPalette(i));
+  palsEl.appendChild(b);
 });
-const io=new IntersectionObserver(es=>es.forEach(en=>{ if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target);} }),{threshold:.08});
-document.querySelectorAll('.reveal').forEach((el,i)=>{ el.style.transitionDelay=(i*70)+'ms'; io.observe(el); });
 
-setC(-0.4,0.6,{render:false});
-updateReadouts();
+/* keyboard */
+window.addEventListener('keydown',e=>{
+  if(/input|textarea|select/i.test(e.target.tagName)) return;
+  const k=e.key.toLowerCase();
+  if(k==='r'){ M.cx=-0.65;M.cy=0;M.halfH=1.30;M.render(); J.cx=0;J.cy=0;J.halfH=1.60;J.render(); }
+  else if(k==='n') randomC();
+  else if(k==='a'){ $('#tAnim').click(); }
+  else if(k==='p'){ setPalette((palIdx+1)%PALETTES.length); }
+  else if(k==='+'||k==='='){ M.zoomAt(.5,.5,1/1.6); M.render(); }
+  else if(k==='-'){ M.zoomAt(.5,.5,1.6); M.render(); }
+});
+
+/* ═══════════════ animation loops ═══════════════ */
+let animT=0, animBase=null;
+function animLoop(){
+  if(!S.anim) return;
+  if(!animBase) animBase={a:S.cRe,b:S.cIm};
+  animT+=0.016;
+  const r=0.075;
+  setC(animBase.a+r*Math.cos(animT), animBase.b+r*Math.sin(animT*1.0+0.6), true);
+  requestAnimationFrame(animLoop);
+}
+let shimT=0, shimFlip=0, shimLast=0;
+function shimmerLoop(){
+  if(!S.shimmer) return;
+  const now=performance.now();
+  if(now-shimLast>42){
+    shimLast=now; shimT=(shimT+0.006)%1;
+    S.offset=shimT; $('#off').value=shimT; $('#offOut').textContent=shimT.toFixed(2);
+    tablesDirty=true; ensureTables();
+    shimFlip^=1;
+    if(shimFlip){ M.repaint(); J.repaint(); } else { J.repaint(); M.repaint(); }
+  }
+  requestAnimationFrame(shimmerLoop);
+}
+
+/* ═══════════════ atlas ═══════════════ */
+const PRESETS=[
+ {n:'Douady rabbit',  c:[-0.123,0.743]},
+ {n:'Airfoil',        c:[-0.85,0.05]},
+ {n:'Basilica',       c:[-1,0]},
+ {n:'Siegel disk',    c:[0.285,0.01]},
+ {n:'Spiral galaxy',  c:[-0.70176,0.3842]},
+ {n:'Cauliflower',    c:[0.285,0.52]},
+ {n:'San Marco',      c:[-0.75,0]},
+ {n:'Dust · c ∉ ℳ',   c:[-1.25,0.1]}
+];
+const thumbs=[];
+const atlasEl=$('#atlas');
+PRESETS.forEach(p=>{
+  const b=document.createElement('button'); b.className='thumb'; b.type='button';
+  const cv=document.createElement('canvas');
+  const nm=document.createElement('span'); nm.className='nm'; nm.textContent=p.n;
+  const cv2=document.createElement('span'); cv2.className='cv';
+  cv2.textContent=fmt(p.c[0],3)+(p.c[1]<0?' − ':' + ')+Math.abs(p.c[1]).toFixed(3)+'i';
+  b.appendChild(cv); b.appendChild(nm); b.appendChild(cv2);
+  b.addEventListener('click',()=>{ setC(p.c[0],p.c[1],false);
+    document.querySelector('#plateJ').scrollIntoView({block:'nearest',behavior:'smooth'}); });
+  atlasEl.appendChild(b);
+  const t={p,el:cv,ctx:cv.getContext('2d'),w:0,h:0};
+  thumbs.push(t);
+});
+function renderThumb(t){
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  const w=Math.round(110*dpr), h=w;
+  t.el.width=w; t.el.height=h;
+  t.w=w; t.h=h;
+  const mi=S.deg===2?110:150;
+  if(!t.buf||t.buf.length!==w*h) t.buf=new Float32Array(w*h);
+  if(!t.img) t.img=t.ctx.createImageData(w,h);
+  const d=t.img.data; for(let i=3;i<d.length;i+=4) d[i]=255;
+  t.d32=new Uint32Array(t.img.data.buffer);
+  const keep={a:S.cRe,b:S.cIm};
+  S.cRe=t.p.c[0]; S.cIm=t.p.c[1];
+  compute(t.buf,w,h,0,0,1.62,mi,1,S.deg,0,h);
+  S.cRe=keep.a; S.cIm=keep.b;
+  paintBuf(t.buf,t.d32,w,0,h);
+  t.ctx.putImageData(t.img,0,0);
+}
+
+/* ═══════════════ figure 1 — escape disc ═══════════════ */
+function drawFig(){
+  const cv=$('#figEscape'), dpr=Math.min(window.devicePixelRatio||1,2);
+  const r=cv.getBoundingClientRect();
+  const W=Math.round(r.width*dpr), H=Math.round(150*dpr);
+  cv.width=W; cv.height=H; const c=cv.getContext('2d');
+  c.clearRect(0,0,W,H);
+  const cx=W*0.42, cy=H*0.5, rad=Math.min(W,H)*0.36;
+  c.strokeStyle='rgba(21,24,29,.25)'; c.lineWidth=1*dpr;
+  c.beginPath(); c.moveTo(cx-rad*1.5,cy); c.lineTo(cx+rad*1.5,cy);
+  c.moveTo(cx,cy-rad*1.35); c.lineTo(cx,cy+rad*1.35); c.stroke();
+  c.setLineDash([4*dpr,4*dpr]); c.strokeStyle='#8a5a1b'; c.lineWidth=1.2*dpr;
+  c.beginPath(); c.arc(cx,cy,rad,0,6.2832); c.stroke(); c.setLineDash([]);
+  /* an escaping orbit */
+  let z=[-0.2,0.35], pts=[z.slice()];
+  for(let i=0;i<6;i++){
+    const x=z[0]*z[0]-z[1]*z[1]+0.28, y=2*z[0]*z[1]+0.52; z=[x,y]; pts.push(z.slice());
+  }
+  c.strokeStyle='#15181d'; c.lineWidth=1.3*dpr; c.beginPath();
+  pts.forEach((p,i)=>{ const x=cx+p[0]*rad*0.55, y=cy+p[1]*rad*0.55; i?c.lineTo(x,y):c.moveTo(x,y); });
+  c.stroke();
+  pts.forEach((p,i)=>{ const x=cx+p[0]*rad*0.55, y=cy+p[1]*rad*0.55;
+    c.fillStyle= i===0?'#8a5a1b':'#15181d';
+    c.beginPath(); c.arc(x,y,(i===0?3.2:2)*dpr,0,6.2832); c.fill(); });
+  c.font=(9.5*dpr)+'px ui-monospace, SFMono-Regular, Menlo, monospace';
+  c.fillStyle='#5d6570';
+  c.fillText('|z| = R', cx+rad*0.62, cy-rad*0.72);
+  c.fillText('z₀ = 0', cx-4*dpr, cy+rad*0.55);
+  c.fillText('escapes', cx+rad*0.9, cy+rad*1.05);
+}
+
+/* ═══════════════ boot ═══════════════ */
+setPalette(0);
+analyse(); computeSeries(); drawChart(1); drawFig();
+
+function fitAll(first){
+  const a=M.resize(), b=J.resize();
+  tableMaxV=Math.max(M.iterFor(),J.iterFor(),S.maxIter); tablesDirty=true;
+  if(a||first) M.render();
+  if(b||first) J.render();
+}
+let fitT=0;
+const ro=new ResizeObserver(()=>{ clearTimeout(fitT); fitT=setTimeout(()=>fitAll(false),140); });
+ro.observe($('#frameM')); ro.observe($('#frameJ')); ro.observe(oc);
+
+requestAnimationFrame(()=>{
+  fitAll(true);
+  thumbs.forEach(renderThumb);
+  const io=new IntersectionObserver(es=>es.forEach((e,i)=>{
+    if(e.isIntersecting){ e.target.style.transitionDelay=(Math.min(i,4)*90)+'ms';
+      e.target.classList.add('in'); io.unobserve(e.target); }
+  }),{threshold:.08});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+});
 })();
 </script>
 </body>
