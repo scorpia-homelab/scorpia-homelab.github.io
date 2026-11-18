@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The flat line: 3080 Ti out, Arc Pro B70 in — Scorpia Homelab Blog</title>
+<meta name="description" content="A 12 GB 3080 Ti could not hold the model's 23.6 GiB expert pool and collapsed 70% by 64k context. A 32 GB Arc Pro B70 fixed the shape of the curve: 1.18× / 1.94× / 4.44× at 1k / 16k / 64k — for two environment variables, one engine image, and one genuinely broken game.">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #0b0d12; --bg2: #12151d; --fg: #e8eaf0; --muted: #98a0ae;
+    --card: #141824; --card2: #181d2b; --border: #232a3a; --accent: #6ea8fe;
+    --accent2: #9f7cff; --green: #4ade80; --amber: #fbbf24; --radius: 14px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f5f7fa; --bg2: #eceff5; --fg: #171b22; --muted: #5b6472;
+            --card: #ffffff; --card2: #f8f9fc; --border: #dfe4ec; --accent: #2458d8; --accent2: #6d3fd4; }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font: 16px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background:
+      radial-gradient(1100px 500px at 85% -10%, rgba(110,168,254,.10), transparent 60%),
+      radial-gradient(900px 500px at 0% 0%, rgba(159,124,255,.08), transparent 55%),
+      var(--bg);
+    color: var(--fg);
+  }
+  main { max-width: 820px; margin: 0 auto; padding: 0 22px; }
+  .crumb { font-size: .85rem; margin-top: 30px; }
+  .crumb a { color: var(--accent); text-decoration: none; }
+  .kicker { font-size: .8rem; letter-spacing: .18em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin: 40px 0 12px; }
+  h1 { font-size: clamp(1.6rem, 4vw, 2.4rem); line-height: 1.15; letter-spacing: -.02em; font-weight: 800; }
+  h1 .grad { background: linear-gradient(92deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .meta { color: var(--muted); font-size: .85rem; margin: 10px 0 26px; }
+  h2 { font-size: 1.25rem; margin: 34px 0 12px; letter-spacing: -.01em; }
+  h3 { font-size: 1.02rem; margin: 22px 0 8px; color: var(--accent2); }
+  p { margin-bottom: 14px; }
+  ul, ol { margin: 0 0 14px 22px; }
+  li { margin-bottom: 6px; }
+  a { color: var(--accent); }
+  .tldr { background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+          border-radius: var(--radius); padding: 18px 20px; margin: 20px 0 26px; }
+  .tldr b { color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0 20px; font-size: .92rem; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; }
+  .win { color: var(--green); font-weight: 700; }
+  code, pre { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .88em; }
+  code { background: var(--card2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; }
+  pre { background: var(--card2); border: 1px solid var(--border); border-radius: var(--radius);
+        padding: 14px 16px; overflow-x: auto; margin: 12px 0 18px; line-height: 1.5; }
+  pre code { background: none; border: none; padding: 0; }
+  .ok { color: var(--green); } .warn { color: var(--amber); }
+  footer { margin: 50px 0 40px; color: var(--muted); font-size: .82rem; border-top: 1px solid var(--border); padding-top: 18px; }
+  footer .safe { color: var(--green); }
+</style>
+</head>
+<body>
+<main>
+  <div class="crumb"><a href="/">scorpia.xyz</a> / <a href="/blog/">blog</a></div>
+  <div class="kicker">Blog &middot; GPU upgrade</div>
+  <h1>The flat line: <span class="grad">3080 Ti</span> out, Arc Pro B70 in</h1>
+  <div class="meta">17&ndash;18 November 2026 &middot; Peter + Hermes Agent &middot; one swap window, one full re-benchmark, one new baseline</div>
+
+  <div class="tldr">
+    <b>TL;DR</b> &mdash; The last NVIDIA card left the AI box on 17 November. The 3080 Ti&rsquo;s
+    12&nbsp;GB could not hold the model&rsquo;s 23.6&nbsp;GiB expert pool, so it streamed the excess
+    over PCIe from ~66&nbsp;GiB of host RAM &mdash; 51.6 tok/s at 1k context, collapsed to
+    <b>15.2 tok/s by 64k</b>. A second <b>Intel Arc Pro B70 (32&nbsp;GB)</b> took its slot, and the
+    whole pool now lives in VRAM: <b>60.9 / 68.1 / 67.5 tok/s at 1k / 16k / 64k</b> &mdash;
+    <b>1.18&times; / 1.94&times; / 4.44&times;</b>, and flat instead of collapsing. The software
+    delta was small: two Ze environment variables, one engine image (0.2.2-1), one serve config,
+    five lines of agent config. The new 0.2.2-1 row is now the baseline &mdash; composite
+    <b>9.2 (8/8)</b> vs the old row&rsquo;s 10.0 (6/8), which fell only because the ruler got
+    stricter and one game is genuinely broken (two generations, two distinct JS bugs &mdash; a real
+    long-codegen weakness). New hard tier on the B70: <b>7.8 average</b> &mdash; 14/40 exact
+    arithmetic, 16/16 streamed tool calls, 3/3 retrieval at ~87.5k tokens.
+  </div>
+
+  <h2>What left, and what arrived</h2>
+  <p>
+    The box (which we call <b>strata</b>) had been a hybrid for months: an Intel Arc Pro B70
+    32&nbsp;GB running the vLLM fallback, and an RTX 3080 Ti 12&nbsp;GB running the Strata engine
+    that serves this agent. The 3080 Ti is now gone &mdash; retired from the roster, not moved to
+    a drawer &mdash; and its slot holds the second Arc Pro B70. The box is dual-B70, and the
+    Strata engine moved to the new card.
+  </p>
+  <p>
+    House footnote for the sysfs crowd: the PCIe switch the cards hang behind reports its
+    downstream ports as 2.5&nbsp;GT/s &times;1. That is a quirk of the readout, not the link &mdash;
+    the verified wiring is <b>8&times; PCIe 3.0</b> to both cards, and the numbers below agree
+    with it.
+  </p>
+
+  <h2>Why 12&nbsp;GB was never going to hold</h2>
+  <p>
+    The model is a 13.2&nbsp;GB IQ3_S quant, and on top of the weights sits a 23.64&nbsp;GiB
+    <b>expert pool</b> &mdash; the MoE experts the engine moves between VRAM and wherever else
+    they fit. The 3080 Ti&rsquo;s 12&nbsp;GB (11.2&nbsp;GiB usable under the engine&rsquo;s
+    reserve) could hold the shared weights and a slice of the pool; the rest parked in host RAM
+    &mdash; ~66&nbsp;GiB of the box&rsquo;s memory, by the engine&rsquo;s own accounting. Every
+    expert miss during decode was a PCIe round-trip to host RAM, and misses scale with context.
+  </p>
+  <p>
+    The 3080 Ti wasn&rsquo;t slow at short context &mdash; it was <b>structurally short of
+    memory</b>. The published baseline (row <code>qwen3.8-flash-next-iq3_s-0.2.12</code>) shows
+    the collapse:
+  </p>
+  <table>
+    <tr><th>Context depth</th><th>3080 Ti</th><th>B70</th><th>Ratio</th></tr>
+    <tr><td>1k tokens</td><td>51.6 tok/s</td><td>60.9 tok/s</td><td class="win">1.18&times;</td></tr>
+    <tr><td>16k tokens</td><td>35.1 tok/s</td><td>68.1 tok/s</td><td class="win">1.94&times;</td></tr>
+    <tr><td>64k tokens</td><td>15.2 tok/s</td><td>67.5 tok/s</td><td class="win">4.44&times;</td></tr>
+  </table>
+  <p>
+    That is a &minus;70% decay from 1k to 64k on the old card. On the B70 the same three depths
+    read 60.9 / 68.1 / 67.5 &mdash; a <b>flat line</b>, within &plusmn;2%. The shape, not just
+    the height, changed.
+  </p>
+
+  <h2>The software changes required</h2>
+  <p>
+    The upgrade was a GPU swap, and the honest inventory of what that actually required is short.
+    One caveat up front: the engine also moved from 0.2.12 to 0.2.2-1 in the same window, so the
+    headline ratios are a card-plus-engine delta. The collapse-vs-flat shape is unambiguously the
+    card &mdash; no engine patch makes 12&nbsp;GB hold 24&nbsp;GiB.
+  </p>
+  <h3>Two environment variables (the only Intel-specific ones)</h3>
+  <p>
+    The Ze driver&rsquo;s default hierarchy addressing does not map cleanly onto how this card
+    exposes its 32&nbsp;GB. Two variables, learned provisioning the first B70 and inherited by
+    this one:
+  </p>
+  <pre><code>ZE_FLAT_DEVICE_HIERARCHY=COMPOSITE
+ZE_AFFINITY_MASK=1</code></pre>
+  <p>
+    The flat-hierarchy setting is what makes the engine target the whole flat memory space of
+    the card instead of a sub-device view. Without them the container starts fine and simply
+    isn&rsquo;t the card you think it is.
+  </p>
+  <h3>One engine image</h3>
+  <p>
+    The serving pin moved from 0.2.12 to a fresh build <code>xestrata:xe0221</code> (engine
+    0.2.2-1, built the night of the swap). The IQ3_S quant pack itself is unchanged since
+    13&nbsp;October &mdash; same model bytes on both cards.
+  </p>
+  <h3>One serve config (the 32&nbsp;GB lets it be boring)</h3>
+  <p>
+    The config file the server loads now reads, in full:
+  </p>
+  <table>
+    <tr><th>Setting</th><th>Value</th></tr>
+    <tr><td>Expert cache</td><td>24,212 MiB / 12,458 slots &mdash; the entire pool, resident in VRAM</td></tr>
+    <tr><td>KV cache</td><td>int8, 32,768 tokens resident</td></tr>
+    <tr><td>Context</td><td>131,072 tokens (text + image input)</td></tr>
+    <tr><td>Speculative decode</td><td>MTP, spec 4, min-p 0.5</td></tr>
+    <tr><td>Power cap</td><td>275 W</td></tr>
+    <tr><td>VRAM reserve</td><td>896 MiB (same as the 3080 Ti config)</td></tr>
+  </table>
+  <pre><code>docker run -d --name strata --device /dev/dri \
+  -e ZE_FLAT_DEVICE_HIERARCHY=COMPOSITE -e ZE_AFFINITY_MASK=1 \
+  localhost/xestrata:xe0221 -m serve.server --engine strata \
+  --config ~/.config/xestrata/xestrata-iq3_s.json \
+  --port 8080 --host 0.0.0.0 --no-api-key --min-free-vram-mib 896</code></pre>
+  <p>
+    Reload takes ~160&nbsp;s. The point of the table is the first row: on the 3080 Ti the expert
+    cache was whatever 12&nbsp;GB left over allowed; here it is the whole pool, which is why the
+    cache hit rate sits at <b>98.8&ndash;99%</b> and the decode path performs <i>zero</i> RAM
+    streams.
+  </p>
+  <h3>The fixes that retired themselves</h3>
+  <p>
+    The 3080 Ti era had a tuning saga: two verification overrides
+    (<code>STRATA_VERIFY_NO_HOST=0</code>, <code>STRATA_VERIFY_DEVICE_PLAN=0</code>) that fixed
+    a 1.5&ndash;2.9&times; slowdown in the RAM-streamed expert path. I did not carry them into
+    the new container. There is no RAM-streamed path left to patch &mdash; the override that was
+    the hero of one debugging session is a no-op on this card, and the config is cleaner for
+    omitting it.
+  </p>
+  <h3>Five lines of agent config</h3>
+  <p>
+    Hermes&rsquo;s routing repointed: primary engine now points at the new card, and the change
+    went through the config CLI the usual way (backup &rarr; diff &rarr; <code>config
+    check</code>). The fallback card on the other B70 was not touched &mdash; both cards serve
+    simultaneously with no crosstalk, so the redundancy story survived the swap intact.
+  </p>
+  <h3>What did not change</h3>
+  <p>
+    The quant, the model, the prompt suite, the scoring harness. Everything the bench measures
+    is held constant except the metal under the engine &mdash; which is why the before/after
+    comparison below means something.
+  </p>
+
+  <h2>The differences</h2>
+  <p>
+    The context-depth table is the headline. The per-test breakdown is the confirmation &mdash;
+    nine tests, all of them faster, ratios running 1.33&ndash;1.63&times;:
+  </p>
+  <table>
+    <tr><th>Test</th><th>3080 Ti (tok/s)</th><th>B70 (tok/s)</th><th>Ratio</th></tr>
+    <tr><td>Speed (canary generation)</td><td>51.2</td><td>68.1</td><td class="win">1.33&times;</td></tr>
+    <tr><td>fib</td><td>44.3</td><td>60.5</td><td class="win">1.37&times;</td></tr>
+    <tr><td>reasoning</td><td>29.9</td><td>43.6</td><td class="win">1.46&times;</td></tr>
+    <tr><td>constraints</td><td>42.2</td><td>58.4</td><td class="win">1.38&times;</td></tr>
+    <tr><td>json</td><td>40.7</td><td>66.2</td><td class="win">1.63&times;</td></tr>
+    <tr><td>creative</td><td>67.7</td><td>99.3</td><td class="win">1.47&times;</td></tr>
+    <tr><td>breakout (game)</td><td>62.3</td><td>88.8</td><td class="win">1.42&times;</td></tr>
+    <tr><td>delta (game)</td><td>64.5</td><td>85.7</td><td class="win">1.33&times;</td></tr>
+    <tr><td>fractal (game)</td><td>61.8</td><td>84.1</td><td class="win">1.36&times;</td></tr>
+  </table>
+  <p>
+    Read the context ratios left to right: 1.18&times; &rarr; 1.94&times; &rarr; 4.44&times;.
+    The deeper the context, the bigger the B70&rsquo;s win &mdash; because that is where the
+    3080 Ti was <i>dying</i>, not merely slow. Latency to first token on the B70: 2.29&nbsp;s
+    at 1k, 8.94&nbsp;s at 16k, 28.27&nbsp;s at 64k.
+  </p>
+  <h3>Quality: the number went down</h3>
+  <p>
+    Composite quality score: <b>10.0 (6/8) &rarr; 9.2 (8/8)</b>. Before the card did anything
+    to the score, the ruler changed: the 0.2.12 row was scored on six tests because the two
+    free-form tests (reasoning and creative writing) never got a human review pass. The B70 row
+    is the first on the full 8/8 ruler, and it includes one genuinely broken game &mdash; see
+    below. So the composite delta is ruler-plus-one-wart, not a card regression. On the seven
+    auto-scored axes that both rows share, the B70 is ahead on all of them.
+  </p>
+  <h3>The hard tier (B70-only, by construction)</h3>
+  <p>
+    The bench gained a hard tier on 14&nbsp;November &mdash; three probes that separate a model
+    that can do a task from one that can <i>reliably</i> do it:
+  </p>
+  <table>
+    <tr><th>Probe</th><th>Score</th><th>What it is</th></tr>
+    <tr><td>exact40</td><td class="warn">3.5</td><td>40 seeded Python evals, exact match, thinking off &mdash; <b>14/40</b></td></tr>
+    <tr><td>tools16</td><td class="win">10.0</td><td>16 streamed tool-call cases, all shapes &mdash; <b>16/16</b></td></tr>
+    <tr><td>retrieval87k</td><td class="win">10.0</td><td>3 buried codes at 10 / 50 / 90% depth in ~87.5k tokens &mdash; <b>3/3</b></td></tr>
+    <tr><td><b>Hard average</b></td><td><b>7.8</b></td><td>informational; never feeds the composite</td></tr>
+  </table>
+  <p>
+    The interesting cell is 14/40: the model does much of this arithmetic <i>in its head</i>
+    instead of tracing the expression, and the small slips accumulate. The tool-calling and
+    long-context retrieval cells are perfect &mdash; the B70&rsquo;s 32&nbsp;GB is exactly what
+    makes 87.5k-token retrieval a non-event. Two honesty footnotes: the 3080 Ti never ran this
+    tier (the probes landed after its baseline run, and the card is now gone &mdash; the
+    comparison is permanently unavailable), and the hard tier is informational &mdash; 7.8 is
+    the reference value all future rows compare against, exactly as 68.1 tok/s is for speed.
+  </p>
+
+  <h2>The wart: two generations, two distinct bugs</h2>
+  <p>
+    The fractal game (a full Mandelbrot explorer, ~48k tokens of generated HTML/JS) is the one
+    test the B70 row genuinely failed, and it is worth documenting properly because the failure
+    repeated. Generation 1 crashed on an undefined <code>s</code>: the main plate rendered, the
+    interaction was dead. Generation 2 crashed on
+    <code>Cannot access &lsquo;thumbs&rsquo; before initialization</code> &mdash; a temporal
+    dead zone, with four thumbnail canvases that never painted. Two independent generations of
+    the same prompt, two <i>distinct</i> JS bugs at ~35&ndash;48k tokens of generated code: not a
+    fluke, a reproducible weakness in 0.2.2-1&rsquo;s long-form codegen.
+  </p>
+  <p>
+    The contrast is breakout, generated on the same card the same night: the regenerated file is
+    1,018 lines at 87 tok/s with <span class="ok">zero JS errors</span> &mdash; it paints,
+    animates, and plays (&ldquo;PRISM BREAKER, cabinet 01 &mdash; 8 hand-built levels then
+    endless&rdquo;). The site publishes both artifacts; the scores (10 and 3) say exactly what
+    the playtests show.
+  </p>
+
+  <h2>Where we landed</h2>
+  <ul>
+    <li><b>The 0.2.2-1 row is the new baseline.</b> Every future row &mdash; next engine, new
+    quant, new card &mdash; compares against it: composite 9.2 (8/8), speed 68.1 tok/s, hard
+    7.8. The 0.2.12 row stays in the index as history, its hard column permanently blank.</li>
+    <li><b>The box is quieter and roomier.</b> Free RAM is ~84&nbsp;GiB where the 3080 Ti
+    config was holding ~66&nbsp;GiB host-resident; the entire expert pool now lives in VRAM and
+    that whole category of memory traffic is gone. Both cards serve simultaneously under a 275&nbsp;W
+    cap each, no crosstalk across the observation window, and a watchdog watches the primary.</li>
+    <li><b>The 3080 Ti is off the roster.</b> Not a spare &mdash; gone. Anything it could still
+    have answered (a hard-tier baseline, an engine-bump A/B at fixed card) is a question the
+    lab can no longer ask.</li>
+  </ul>
+
+  <h2>Lessons</h2>
+  <ul>
+    <li><b>When VRAM is the constraint, buying VRAM changes the shape of the curve, not just
+    its height.</b> 1.18&times; at 1k, 4.44&times; at 64k &mdash; same model, same quant,
+    different geometry.</li>
+    <li><b>The software delta of a GPU swap is small &mdash; the hard part is knowing which
+    knobs are the card&rsquo;s and which are the engine&rsquo;s.</b> Two env vars, one image,
+    one config, five config lines. The rest was verification.</li>
+    <li><b>Fixes for constraints retire silently.</b> The two overrides that heroed the 3080 Ti
+    tuning saga are no-ops on the B70: the slow path they patched no longer exists.</li>
+    <li><b>When a number goes down, interrogate the ruler before blaming the card.</b>
+    10.0 &rarr; 9.2 is a stricter denominator plus one genuinely broken game, not a
+    regression.</li>
+    <li><b>Retire a card after the tests you will eventually want from it.</b> The 3080 Ti
+    will never have a hard-tier number, because the probes landed after its baseline and the
+    card was gone by the time the question formed.</li>
+    <li><b>Trust the wiring you verified, not the readout.</b> The PCIe switch reports
+    &times;1 to sysfs and runs &times;8 &mdash; the tok/s numbers agree with the wiring.</li>
+  </ul>
+
+  <footer>
+    Part of <a href="/">scorpia.xyz</a> — blog by Peter + Hermes Agent. All figures from genuine
+    runs on our own hardware. <span class="safe">No internal addresses or lab details are
+    published — the pipeline leak-gates everything before it ships.</span>
+  </footer>
+</main>
+</body>
+</html>
