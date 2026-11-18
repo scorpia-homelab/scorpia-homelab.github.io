@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mandelbrot and Julia Sets</title>
+<style>
+:root {
+  --bg: #0b1020;
+  --panel: #111827;
+  --border: #1f2937;
+  --text: #e5e7eb;
+  --muted: #9ca3af;
+  --accent: #38bdf8;
+  --button: #1f2937;
+  --button-hover: #374151;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: radial-gradient(circle at top, #162033 0%, #0b1020 60%, #070b14 100%);
+  color: var(--text);
+}
+
+header {
+  padding: 28px 24px 12px;
+}
+
+h1 {
+  margin: 0 0 6px;
+  font-size: 1.7rem;
+  letter-spacing: 0.2px;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+main {
+  display: grid;
+  gap: 22px;
+  padding: 0 24px 36px;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+
+h2 {
+  margin: 0 0 10px;
+  font-size: 1.15rem;
+}
+
+canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 10px;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.math {
+  margin: 10px 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  align-items: center;
+}
+
+button {
+  background: var(--button);
+  color: var(--text);
+  border: 1px solid #374151;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--button-hover);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+input[type="range"] {
+  accent-color: var(--accent);
+}
+
+output {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  color: var(--accent);
+  min-width: 52px;
+}
+
+.info {
+  margin-top: 10px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.global-controls {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  align-items: center;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Mandelbrot &amp; Julia Sets</h1>
+  <p class="subtitle">Self-contained interactive fractal viewer. Drag to pan, scroll to zoom.</p>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Mandelbrot Set</h2>
+    <canvas id="mandelbrot" width="512" height="512"></canvas>
+    <p class="math">z<sub>n+1</sub> = z<sub>n</sub><sup>2</sup> + c, z<sub>0</sub> = 0, c = pixel</p>
+    <div class="controls">
+      <button id="mandel-zoom-in">Zoom in</button>
+      <button id="mandel-zoom-out">Zoom out</button>
+      <button id="mandel-reset">Reset</button>
+    </div>
+    <div class="info" id="mandel-info"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Julia Set</h2>
+    <canvas id="julia" width="512" height="512"></canvas>
+    <p class="math">z<sub>n+1</sub> = z<sub>n</sub><sup>2</sup> + c, z<sub>0</sub> = pixel, c fixed</p>
+    <div class="controls">
+      <button id="julia-zoom-in">Zoom in</button>
+      <button id="julia-zoom-out">Zoom out</button>
+      <button id="julia-reset">Reset</button>
+      <button id="preset-classic">Classic</button>
+      <button id="preset-dendrite">Dendrite</button>
+      <button id="preset-seahorse">Seahorse</button>
+      <button id="preset-spiral">Spiral</button>
+      <button id="preset-random">Random</button>
+    </div>
+    <div class="controls">
+      <label>
+        Re(c)
+        <input id="c-re" type="range" min="-1" max="1" step="0.001" value="-0.8">
+        <output id="c-re-out">-0.800</output>
+      </label>
+      <label>
+        Im(c)
+        <input id="c-im" type="range" min="-1" max="1" step="0.001" value="0.156">
+        <output id="c-im-out">0.156</output>
+      </label>
+    </div>
+    <div class="info" id="julia-info"></div>
+  </section>
+
+  <section class="panel global-controls">
+    <label>
+      Iterations
+      <input id="iterations" type="range" min="50" max="500" step="10" value="200">
+      <output id="iterations-out">200</output>
+    </label>
+    <label>
+      Color scale
+      <input id="color-scale" type="range" min="0.01" max="0.2" step="0.005" value="0.05">
+      <output id="color-scale-out">0.050</output>
+    </label>
+    <span class="hint">Higher iterations reveal finer detail at deep zoom.</span>
+  </section>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  const mandelCanvas = document.getElementById('mandelbrot');
+  const juliaCanvas = document.getElementById('julia');
+  const mandelCtx = mandelCanvas.getContext('2d');
+  const juliaCtx = juliaCanvas.getContext('2d');
+
+  const mandelImage = mandelCtx.createImageData(mandelCanvas.width, mandelCanvas.height);
+  const juliaImage = juliaCtx.createImageData(juliaCanvas.width, juliaCanvas.height);
+
+  const state = {
+    mandel: { cx: -0.5, cy: 0, scale: mandelCanvas.width / 3 },
+    julia: { cx: 0, cy: 0, scale: juliaCanvas.width / 3 },
+    c: { re: -0.8, im: 0.156 },
+    maxIter: 200,
+    colorScale: 0.05
+  };
+
+  const paletteSize = 1024;
+  const palette = buildPalette(paletteSize);
+  const paletteIndexMask = paletteSize - 1;
+
+  function buildPalette(size) {
+    const arr = new Uint8Array(size * 3);
+    for (let i = 0; i < size; i++) {
+      const t = i / size;
+      const r = Math.cos(2 * Math.PI * t);
+      const g = Math.cos(2 * Math.PI * t + 2 * Math.PI / 3);
+      const b = Math.cos(2 * Math.PI * t + 4 * Math.PI / 3);
+      arr[i * 3] = Math.round(255 * r * r);
+      arr[i * 3 + 1] = Math.round(255 * g * g);
+      arr[i * 3 + 2] = Math.round(255 * b * b);
+    }
+    return arr;
+  }
+
+  function colorIndex(nu, colorScale) {
+    let t = nu * colorScale;
+    if (t < 0) t = 0;
+    return (Math.floor(t) & paletteIndexMask) * 3;
+  }
+
+  function renderMandelbrot() {
+    const w = mandelCanvas.width;
+    const h = mandelCanvas.height;
+    const data = mandelImage.data;
+    const view = state.mandel;
+    const scale = view.scale;
+    const cx = view.cx;
+    const cy = view.cy;
+    const halfW = w / 2;
+    const halfH = h / 2;
+    const maxIter = state.maxIter;
+    const colorScale = state.colorScale;
+    const p = palette;
+
+    for (let y = 0; y < h; y++) {
+      const imag = cy - (y - halfH) / scale;
+      const row = y * w;
+
+      for (let x = 0; x < w; x++) {
+        const real = cx + (x - halfW) / scale;
+
+        let zr = 0;
+        let zi = 0;
+        let n = 0;
+        let abs2 = 0;
+
+        const cRe = real;
+        const cIm = imag;
+
+        while (n < maxIter && abs2 < 4) {
+          const zr2 = zr * zr;
+          const zi2 = zi * zi;
+          zi = 2 * zr * zi + cIm;
+          zr = zr2 - zi2 + cRe;
+          abs2 = zr * zr + zi * zi;
+          n++;
+        }
+
+        const i4 = (row + x) * 4;
+
+        if (n === maxIter) {
+          data[i4] = 0;
+          data[i4 + 1] = 0;
+          data[i4 + 2] = 0;
+          data[i4 + 3] = 255;
+        } else {
+          const abs = Math.sqrt(abs2);
+          const nu = n + 1 - Math.log2(Math.log(abs) / Math.LN2);
+          const pi = colorIndex(nu, colorScale);
+          data[i4] = p[pi];
+          data[i4 + 1] = p[pi + 1];
+          data[i4 + 2] = p[pi + 2];
+          data[i4 + 3] = 255;
+        }
+      }
+    }
+
+    mandelCtx.putImageData(mandelImage, 0, 0);
+  }
+
+  function renderJulia() {
+    const w = juliaCanvas.width;
+    const h = juliaCanvas.height;
+    const data = juliaImage.data;
+    const view = state.julia;
+    const scale = view.scale;
+    const cx = view.cx;
+    const cy = view.cy;
+    const halfW = w / 2;
+    const halfH = h / 2;
+    const maxIter = state.maxIter;
+    const colorScale = state.colorScale;
+    const cRe = state.c.re;
+    const cIm = state.c.im;
+    const p = palette;
+
+    for (let y = 0; y < h; y++) {
+      const imag = cy - (y - halfH) / scale;
+      const row = y * w;
+
+      for (let x = 0; x < w; x++) {
+        const real = cx + (x - halfW) / scale;
+
+        let zr = real;
+        let zi = imag;
+        let n = 0;
+        let abs2 = zr * zr + zi * zi;
+
+        while (n < maxIter && abs2 < 4) {
+          const zr2 = zr * zr;
+          const zi2 = zi * zi;
+          zi = 2 * zr * zi + cIm;
+          zr = zr2 - zi2 + cRe;
+          abs2 = zr * zr + zi * zi;
+          n++;
+        }
+
+        const i4 = (row + x) * 4;
+
+        if (n === maxIter) {
+          data[i4] = 0;
+          data[i4 + 1] = 0;
+          data[i4 + 2] = 0;
+          data[i4 + 3] = 255;
+        } else {
+          const abs = Math.sqrt(abs2);
+          const nu = n + 1 - Math.log2(Math.log(abs) / Math.LN2);
+          const pi = colorIndex(nu, colorScale);
+          data[i4] = p[pi];
+          data[i4 + 1] = p[pi + 1];
+          data[i4 + 2] = p[pi + 2];
+          data[i4 + 3] = 255;
+        }
+      }
+    }
+
+    juliaCtx.putImageData(juliaImage, 0, 0);
+  }
+
+  let mandelDirty = true;
+  let juliaDirty = true;
+  let renderQueued = false;
+
+  function scheduleRender() {
+    if (!renderQueued) {
+      renderQueued = true;
+      requestAnimationFrame(() => {
+        renderQueued = false;
+        if (mandelDirty) {
+          renderMandelbrot();
+          mandelDirty = false;
+        }
+        if (juliaDirty) {
+          renderJulia();
+          juliaDirty = false;
+        }
+        updateInfo();
+      });
+    }
+  }
+
+  function markMandelDirty() {
+    mandelDirty = true;
+    scheduleRender();
+  }
+
+  function markJuliaDirty() {
+    juliaDirty = true;
+    scheduleRender();
+  }
+
+  function markBothDirty() {
+    mandelDirty = true;
+    juliaDirty = true;
+    scheduleRender();
+  }
+
+  function updateInfo() {
+    const fmt = (v) => v.toFixed(4);
+    const sign = (v) => (v < 0 ? '-' : '+');
+
+    document.getElementById('mandel-info').textContent =
+      `center ${fmt(state.mandel.cx)} ${sign(state.mandel.cy)} ${fmt(Math.abs(state.mandel.cy))}i, scale ${state.mandel.scale.toFixed(1)} px/unit`;
+
+    document.getElementById('julia-info').textContent =
+      `c = ${fmt(state.c.re)} ${sign(state.c.im)} ${fmt(Math.abs(state.c.im))}i`;
+  }
+
+  function zoomAt(view, factor, px, py, canvas) {
+    const w = canvas.width;
+    const h = canvas.height;
+    const oldScale = view.scale;
+    let newScale = oldScale * factor;
+    newScale = Math.min(1e6, Math.max(1e-6, newScale));
+
+    const wx = view.cx + (px - w / 2) / oldScale;
+    const wy = view.cy - (py - h / 2) / oldScale;
+
+    view.cx = wx - (px - w / 2) / newScale;
+    view.cy = wy + (py - h / 2) / newScale;
+    view.scale = newScale;
+  }
+
+  function attachInteractions(canvas, view, markDirty) {
+    let dragging = false;
+    let startX = 0;
+    let startY = 0;
+    let startCx = 0;
+    let startCy = 0;
+    let startScale = 0;
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const px = (e.clientX - rect.left) * (canvas.width / rect.width);
+      const py = (e.clientY - rect.top) * (canvas.height / rect.height);
+      const factor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
+      zoomAt(view, factor, px, py, canvas);
+      markDirty();
+    }, { passive: false });
+
+    canvas.addEventListener('pointerdown', (e) => {
+      dragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      startCx = view.cx;
+      startCy = view.cy;
+      startScale = view.scale;
+      canvas.setPointerCapture(e.pointerId);
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const rect = canvas.getBoundingClientRect();
+      const dx = (e.clientX - startX) * (canvas.width / rect.width);
+      const dy = (e.clientY - startY) * (canvas.height / rect.height);
+      view.cx = startCx - dx / startScale;
+      view.cy = startCy + dy / startScale;
+      markDirty();
+    });
+
+    canvas.addEventListener('pointerup', (e) => {
+      dragging = false;
+      canvas.releasePointerCapture(e.pointerId);
+    });
+
+    canvas.addEventListener('pointercancel', () => {
+      dragging = false;
+    });
+  }
+
+  function zoomButton(view, canvas, factor, markDirty) {
+    zoomAt(view, factor, canvas.width / 2, canvas.height / 2, canvas);
+    markDirty();
+  }
+
+  function resetView(view, canvas, cx, cy, scale, markDirty) {
+    view.cx = cx;
+    view.cy = cy;
+    view.scale = scale;
+    markDirty();
+  }
+
+  const mandelDefaultScale = mandelCanvas.width / 3;
+  const juliaDefaultScale = juliaCanvas.width / 3;
+
+  attachInteractions(mandelCanvas, state.mandel, markMandelDirty);
+  attachInteractions(juliaCanvas, state.julia, markJuliaDirty);
+
+  document.getElementById('mandel-zoom-in').addEventListener('click', () => {
+    zoomButton(state.mandel, mandelCanvas, 1.2, markMandelDirty);
+  });
+
+  document.getElementById('mandel-zoom-out').addEventListener('click', () => {
+    zoomButton(state.mandel, mandelCanvas, 1 / 1.2, markMandelDirty);
+  });
+
+  document.getElementById('mandel-reset').addEventListener('click', () => {
+    resetView(state.mandel, mandelCanvas, -0.5, 0, mandelDefaultScale, markMandelDirty);
+  });
+
+  document.getElementById('julia-zoom-in').addEventListener('click', () => {
+    zoomButton(state.julia, juliaCanvas, 1.2, markJuliaDirty);
+  });
+
+  document.getElementById('julia-zoom-out').addEventListener('click', () => {
+    zoomButton(state.julia, juliaCanvas, 1 / 1.2, markJuliaDirty);
+  });
+
+  document.getElementById('julia-reset').addEventListener('click', () => {
+    resetView(state.julia, juliaCanvas, 0, 0, juliaDefaultScale, markJuliaDirty);
+  });
+
+  const cRe = document.getElementById('c-re');
+  const cIm = document.getElementById('c-im');
+  const cReOut = document.getElementById('c-re-out');
+  const cImOut = document.getElementById('c-im-out');
+
+  function setJuliaC(re, im) {
+    state.c.re = re;
+    state.c.im = im;
+    cRe.value = re;
+    cIm.value = im;
+    cReOut.textContent = re.toFixed(3);
+    cImOut.textContent = im.toFixed(3);
+    markJuliaDirty();
+  }
+
+  cRe.addEventListener('input', (e) => {
+    setJuliaC(parseFloat(e.target.value), state.c.im);
+  });
+
+  cIm.addEventListener('input', (e) => {
+    setJuliaC(state.c.re, parseFloat(e.target.value));
+  });
+
+  document.getElementById('preset-classic').addEventListener('click', () => {
+    setJuliaC(-0.8, 0.156);
+  });
+
+  document.getElementById('preset-dendrite').addEventListener('click', () => {
+    setJuliaC(-0.7269, 0.1889);
+  });
+
+  document.getElementById('preset-seahorse').addEventListener('click', () => {
+    setJuliaC(0.285, 0.01);
+  });
+
+  document.getElementById('preset-spiral').addEventListener('click', () => {
+    setJuliaC(0.3, 0.53);
+  });
+
+  document.getElementById('preset-random').addEventListener('click', () => {
+    const re = (Math.random() * 2 - 1) * 0.9;
+    const im = (Math.random() * 2 - 1) * 0.9;
+    setJuliaC(re, im);
+  });
+
+  const iterInput = document.getElementById('iterations');
+  const iterOut = document.getElementById('iterations-out');
+
+  iterInput.addEventListener('input', (e) => {
+    state.maxIter = parseInt(e.target.value, 10);
+    iterOut.textContent = String(state.maxIter);
+    markBothDirty();
+  });
+
+  const colorInput = document.getElementById('color-scale');
+  const colorOut = document.getElementById('color-scale-out');
+
+  colorInput.addEventListener('input', (e) => {
+    state.colorScale = parseFloat(e.target.value);
+    colorOut.textContent = state.colorScale.toFixed(3);
+    markBothDirty();
+  });
+
+  scheduleRender();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "reasoning": 9,
+  "creative": 7,
+  "breakout": 0,
+  "delta": 3,
+  "fractal": 9,
+  "_notes": {
+    "reasoning/creative": "inherited from the 6700 XT row (identical model file and identical outputs; only hardware changed \u2014 same ruler, same model, no observed quality delta on the text axes)",
+    "breakout": "two generations, both loop-aborted: gen1 identical 300-char block x3 at 47,220 chars; gen2 at 74,661 chars. Two DISTINCT loop points but the same shape (degenerate repetition inside long structured output) -> sampling-dependent repetition weakness on long generations, recorded 0: no HTML document ever produced.",
+    "delta": "generation consumed the full 29,184-token context window and died mid font-bitmap data table (no game code, no </html>). Styled C64 shell + asset tables only. Context-cap failure, not a mid-game JS bug. Score 3 = clean valid HTML fragment + no JS errors, zero gameplay.",
+    "fractal": "play-test: 2/2 canvases painted, responds=True (wheel-zoom changed HUD coords), 0 JS errors, complete 594-line document with pan/zoom/presets. animated=False is not applicable: interactive explorer by design, not an auto-animating toy. First fully clean fractal in this model/harness family."
+  }
+}

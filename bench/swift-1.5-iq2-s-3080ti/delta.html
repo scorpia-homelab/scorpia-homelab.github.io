@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DELTA — a C64-style horizontal shooter</title>
+<style>
+  :root{
+    --bg:#04050c; --panel:#14162a; --line:#2a2e4a;
+    --ink:#bcbcbc; --dim:#6c6c6c; --faint:#444444;
+    --green:#008888; --violet:#884488; --yellow:#888800; --red:#880000;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:"Courier New",ui-monospace,SFMono-Regular,Menlo,monospace;
+    color:var(--ink);
+    background:
+      radial-gradient(ellipse at 78% 12%, rgba(68,0,68,.16), transparent 55%),
+      radial-gradient(ellipse at 12% 88%, rgba(0,68,68,.13), transparent 50%),
+      var(--bg);
+    min-height:100vh; overflow-x:hidden;
+  }
+  /* drifting starfield layers */
+  body::before{
+    content:""; position:fixed; inset:0; z-index:0; pointer-events:none;
+    background-image:
+      radial-gradient(1px 1px at 12px 18px, rgba(255,255,255,.55), transparent 1.5px),
+      radial-gradient(1px 1px at 62px 92px, rgba(188,188,188,.4), transparent 1.5px),
+      radial-gradient(1px 1px at 104px 44px, rgba(188,188,188,.3), transparent 1.5px);
+    background-size:160px 160px;
+    animation:driftA 110s linear infinite;
+  }
+  body::after{
+    content:""; position:fixed; inset:0; z-index:0; pointer-events:none;
+    background-image:
+      radial-gradient(2px 2px at 34px 66px, rgba(255,255,255,.8), transparent 2px),
+      radial-gradient(1px 1px at 96px 132px, rgba(188,188,188,.5), transparent 1.5px);
+    background-size:240px 240px;
+    animation:driftB 55s linear infinite;
+  }
+  @keyframes driftA{to{background-position:-1760px 0}}
+  @keyframes driftB{to{background-position:-2640px 0}}
+
+  .wrap{position:relative; z-index:1; max-width:920px; margin:0 auto; padding:30px 20px 44px}
+
+  /* ---------- header ---------- */
+  header{display:flex; justify-content:space-between; align-items:flex-end; gap:18px; flex-wrap:wrap; margin-bottom:20px}
+  .brand h1{
+    margin:0; font-size:clamp(24px,4.5vw,36px); font-weight:700; letter-spacing:.42em;
+    color:#fff; text-shadow:3px 0 rgba(136,0,0,.75), -3px 0 rgba(0,68,68,.75);
+  }
+  .tag{margin:6px 0 0; font-size:11px; letter-spacing:.28em; text-transform:uppercase; color:var(--dim)}
+  .hud-top{display:flex; gap:14px; align-items:center}
+  .hibox{
+    border:1px solid var(--line); background:rgba(16,18,31,.65);
+    padding:7px 14px; font-size:12px; letter-spacing:.18em;
+  }
+  .hibox b{color:var(--yellow); font-weight:700}
+  #sndBtn{
+    font:inherit; font-size:11px; letter-spacing:.18em; cursor:pointer;
+    color:var(--ink); background:var(--panel);
+    border:1px solid var(--line); border-bottom-width:3px; border-radius:4px;
+    padding:7px 14px; transition:transform .06s, background .2s, color .2s;
+  }
+  #sndBtn:active{transform:translateY(2px); border-bottom-width:1px}
+  #sndBtn.off{color:var(--dim)}
+
+  /* ---------- cabinet / CRT ---------- */
+  .cabinet{
+    background:linear-gradient(180deg,#171b30,#0d1020);
+    border:1px solid var(--line); border-radius:16px; padding:16px;
+    box-shadow:0 22px 60px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .bezel-row{
+    display:flex; justify-content:space-between; align-items:center;
+    margin-bottom:10px; font-size:10px; letter-spacing:.22em;
+    text-transform:uppercase; color:var(--dim);
+  }
+  .led{
+    display:inline-block; width:8px; height:8px; border-radius:50%;
+    background:var(--green); box-shadow:0 0 8px var(--green);
+    margin-right:7px; vertical-align:-1px; animation:pulse 2.6s ease-in-out infinite;
+  }
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .crt{
+    position:relative; background:#000; border-radius:10px; overflow:hidden;
+    display:flex; justify-content:center;
+    box-shadow:inset 0 0 50px rgba(0,0,0,.55), 0 0 26px rgba(0,136,136,.10);
+  }
+  .crt canvas{display:block; image-rendering:pixelated; image-rendering:crisp-edges}
+  .crt::before{ /* vignette */
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background:radial-gradient(ellipse at center, transparent 52%, rgba(0,0,0,.5) 100%);
+  }
+  .crt::after{ /* scanlines */
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.2) 0 1px, transparent 1px 3px);
+  }
+  .flicker{
+    position:absolute; inset:0; pointer-events:none;
+    background:rgba(160,190,255,.025); animation:flick 3.7s steps(1) infinite;
+  }
+  @keyframes flick{0%,92%,96%,100%{opacity:.5}93%,95%{opacity:.95}}
+  .hint{
+    margin:14px 0 0; text-align:center; font-size:11px; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--faint);
+  }
+
+  /* ---------- footer ---------- */
+  footer{
+    display:grid; grid-template-columns:1fr 1fr; gap:28px;
+    margin-top:26px; font-size:12px;
+  }
+  footer h3{
+    margin:0 0 12px; font-size:11px; letter-spacing:.28em;
+    text-transform:uppercase; color:var(--yellow); font-weight:700;
+  }
+  .controls ul{list-style:none; margin:0; padding:0}
+  .controls li{display:flex; gap:12px; align-items:center; color:var(--dim); margin-bottom:8px}
+  kbd{
+    display:inline-block; min-width:28px; text-align:center;
+    background:var(--panel); border:1px solid var(--line); border-bottom-width:3px;
+    border-radius:4px; padding:3px 8px; font:inherit; font-size:11px; color:var(--ink);
+  }
+  .brief p{margin:0 0 10px; color:var(--dim); line-height:1.7}
+  .brief em{font-style:normal; color:var(--ink)}
+  .credit{font-size:10px; letter-spacing:.12em; color:var(--faint)}
+
+  @media (max-width:640px){
+    footer{grid-template-columns:1fr}
+    header{flex-direction:column; align-items:flex-start}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <h1>DELTA</h1>
+      <p class="tag">horizontal shooter · c64 tribute · 1987</p>
+    </div>
+    <div class="hud-top">
+      <div class="hibox">HI-SCORE <b id="hiscore">000000</b></div>
+      <button id="sndBtn" type="button">SOUND ON</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="cabinet">
+      <div class="bezel-row">
+        <span><span class="led"></span>PWR</span>
+        <span>C-64 · 320×200 · 50HZ</span>
+      </div>
+      <div class="crt">
+        <canvas id="screen"></canvas>
+        <div class="flicker"></div>
+      </div>
+    </div>
+    <p class="hint">enter launch · p pause · m mute · click the tube to start</p>
+  </main>
+
+  <footer>
+    <div class="controls">
+      <h3>Flight Manual</h3>
+      <ul>
+        <li><span><kbd>←</kbd><kbd>→</kbd></span><span>steer (or <kbd>A</kbd><kbd>D</kbd>)</span></li>
+        <li><span><kbd>↑</kbd><kbd>↓</kbd></span><span>climb (or <kbd>W</kbd><kbd>S</kbd>)</span></li>
+        <li><span><kbd>SPACE</kbd></span><span>fire</span></li>
+        <li><span><kbd>P</kbd></span><span>pause</span></li>
+        <li><span><kbd>M</kbd></span><span>mute</span></li>
+        <li><span><kbd>ENTER</kbd></span><span>launch / relaunch</span></li>
+      </ul>
+    </div>
+    <div class="brief">
+      <h3>Mission Briefing</h3>
+      <p>Pilot the <em>delta</em> through endless waves of drones, raiders and cruisers. Every fifth wave, the <em>mothership</em> comes in — bring it down.</p>
+      <p>Golden <em>P</em> pods grant a triple cannon for eight seconds. Three hulls per run. Score is everything.</p>
+      <p class="credit">A loving homage to <em>Delta</em> (Thalamus, 1987). Zero assets, zero libraries — one file, pure pixels.</p>
+    </div>
+  </footer>
+
+</div>
+
+<noscript><p style="color:#bcbcbc;padding:20px">This game needs JavaScript enabled.</p></noscript>
+
+<script>
+(() => {
+'use strict';
+
+/* ================= pixel font (5x7) ================= */
+const FONT = {
+'A':["01110","10001","10001","11111","10001","10001","10001"],
+'B':["11110","10001","10001","11110","10001","10001","11110"],
+'C':["01110","10001","10001","10001","10001","10001","01110"],
+'D':["11110","10001","10001","10001","10001","10001","11110"],
+'E':["11111","10000","10000","11110","10000","10000","11111"],
